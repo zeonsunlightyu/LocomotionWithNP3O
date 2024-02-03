@@ -68,7 +68,8 @@ class OnConstraintPolicyRunner:
             [self.env.num_obs], 
             [self.env.num_privileged_obs], 
             [self.env.num_actions],
-            [self.env.cfg.cost.num_costs]
+            [self.env.cfg.cost.num_costs],
+            self.env.cost_d_values_tensor
         )
         # Log
         self.log_dir = log_dir
@@ -136,7 +137,8 @@ class OnConstraintPolicyRunner:
 
             #update k value for better expolration
             k_value = self.alg.update_k_value(it)
-            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss = self.alg.update()
+            
+            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss, mean_dormant_value = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -176,6 +178,7 @@ class OnConstraintPolicyRunner:
         self.writer.add_scalar('Loss/cost_value_function', locs['mean_cost_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/mean_viol_loss', locs['mean_viol_loss'], locs['it'])
+        self.writer.add_scalar('Loss/mean_dormant_value', locs['mean_dormant_value'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])

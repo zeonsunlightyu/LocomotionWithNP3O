@@ -1,5 +1,7 @@
 import torch.nn as nn
 import torch
+from copy import deepcopy
+from collections import defaultdict
 
 def get_activation(act_name):
     if act_name == "elu":
@@ -165,3 +167,75 @@ class Actor(nn.Module):
     def infer_scandots_latent(self, obs):
         scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
         return self.scan_encoder(scan)
+    
+def weight_init(m):
+    if isinstance(m, nn.Linear):
+        nn.init.orthogonal_(m.weight.data)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+    elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        gain = nn.init.calculate_gain('relu')
+        nn.init.orthogonal_(m.weight.data, gain)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+
+class LinearOutputHook:
+    def __init__(self):
+        self.outputs = []
+
+    def __call__(self, module, module_in, module_out):
+        self.outputs.append(module_out)
+
+def cal_dormant_ratio(model, *inputs, percentage=0.025):
+    hooks = []
+    hook_handlers = []
+    total_neurons = 0
+    dormant_neurons = 0
+
+    for _, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            hook = LinearOutputHook()
+            hooks.append(hook)
+            hook_handlers.append(module.register_forward_hook(hook))
+
+    with torch.no_grad():
+        model(*inputs)
+
+    for module, hook in zip(
+        (module
+         for module in model.modules() if isinstance(module, nn.Linear)),
+            hooks):
+        with torch.no_grad():
+            for output_data in hook.outputs:
+                mean_output = output_data.abs().mean(0)
+                avg_neuron_output = mean_output.mean()
+                dormant_indices = (mean_output < avg_neuron_output *
+                                   percentage).nonzero(as_tuple=True)[0]
+                total_neurons += module.weight.shape[0]
+                dormant_neurons += len(dormant_indices)         
+
+    for hook in hooks:
+        hook.outputs.clear()
+
+    for hook_handler in hook_handlers:
+        hook_handler.remove()
+
+    return dormant_neurons / total_neurons
+
+
+def perturb(net, optimizer, perturb_factor):
+    linear_keys = [
+        name for name, mod in net.named_modules()
+        if isinstance(mod, torch.nn.Linear)
+    ]
+    new_net = deepcopy(net)
+    new_net.apply(weight_init)
+
+    for name, param in net.named_parameters():
+        if any(key in name for key in linear_keys):
+            noise = new_net.state_dict()[name] * (1 - perturb_factor)
+            param.data = param.data * perturb_factor + noise
+        else:
+            param.data = net.state_dict()[name]
+    optimizer.state = defaultdict(dict)
+    return net, optimizer

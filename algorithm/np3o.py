@@ -72,8 +72,8 @@ class NP3O:
             self.depth_actor = depth_actor
             self.depth_actor_optimizer = optim.Adam([*self.depth_actor.parameters(), *self.depth_encoder.parameters()], lr=depth_encoder_paras["learning_rate"])
 
-    def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape,cost_shape):
-        self.storage = RolloutStorageWithCost(num_envs, num_transitions_per_env, actor_obs_shape,  critic_obs_shape, action_shape,cost_shape,self.device)
+    def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape,cost_shape,cost_d_values):
+        self.storage = RolloutStorageWithCost(num_envs, num_transitions_per_env, actor_obs_shape,  critic_obs_shape, action_shape,cost_shape,cost_d_values,self.device)
 
     def test_mode(self):
         self.actor_critic.test()
@@ -173,6 +173,7 @@ class NP3O:
         mean_viol_loss = 0
         mean_surrogate_loss = 0
         mean_priv_reg_loss = 0
+        mean_dromant_value = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -251,6 +252,10 @@ class NP3O:
                 nn.utils.clip_grad_norm_(self.actor_critic.history_encoder.parameters(), self.max_grad_norm)
                 self.hist_encoder_optimizer.step()
 
+                # Compute dormant value
+                with torch.no_grad():
+                    mean_dromant_value += self.actor_critic.infer_dormant_ratio(obs_batch)
+
                 mean_priv_reg_loss += priv_reg_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
@@ -259,10 +264,11 @@ class NP3O:
         mean_viol_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_priv_reg_loss /= num_updates
+        mean_dromant_value /= num_updates
 
         self.storage.clear()
    
-        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss
+        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss, mean_dromant_value
     
     def update_depth_actor(self, actions_student_batch, actions_teacher_batch):
         if self.if_depth:

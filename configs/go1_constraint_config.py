@@ -81,7 +81,7 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.30
+        base_height_target = 0.25
         class scales( LeggedRobotCfg.rewards.scales ):
             # torques = -0.0001
             # termination = 0.0
@@ -103,8 +103,8 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
             termination = 0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.05
+            lin_vel_z = 0.0
+            ang_vel_xy = 0.0
             orientation = 0.0
             dof_vel = 0.0
             dof_acc = 0.0
@@ -168,16 +168,24 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
             acc_smoothness = 0.1
             collision = 0.1
             feet_contact_forces = 0.1
-            #stumble = 1.
-            #ang_vel_xy = 1.
-            base_height = 1.
-            #lin_vel_z = 1.
-            #feet_air_time = 1.
-            #torques = 1.
-            #walking_style = 1.
+            ang_vel_xy = 1.
+            lin_vel_z = 1.
+            # xyz = 1
+ 
+        class d_values:
+            pos_limit = 0.0
+            torque_limit = 0.0
+            dof_vel_limits = 0.0
+            vel_smoothness = 0.0
+            acc_smoothness = 0.0
+            collision = 0.0
+            feet_contact_forces = 0.0
+            ang_vel_xy = 1
+            lin_vel_z = 0.0
+            # xyz = 0.0
     
     class cost:
-        num_costs = 8
+        num_costs = 9
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -204,7 +212,7 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 8
+        num_costs = 9
       
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
@@ -212,5 +220,5 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticConstraintRMA'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 3000
+        max_iterations = 1500
   

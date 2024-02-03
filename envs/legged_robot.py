@@ -819,6 +819,7 @@ class LeggedRobot(BaseTask):
         self.cost_functions = []
         self.cost_names = []
         self.cost_k_values = []
+        self.cost_d_values_tensor = []
 
         for name,scale in self.cost_scales.items():
             self.cost_names.append(name)
@@ -828,7 +829,13 @@ class LeggedRobot(BaseTask):
             self.cost_functions.append(getattr(self, name))
             self.cost_k_values.append(float(scale))
 
+        for name,value in self.cost_d_values.items():
+            print('cost name:',name)
+            print('cost d value:',value)
+            self.cost_d_values_tensor.append(float(value))
+
         self.cost_k_values = torch.FloatTensor(self.cost_k_values).view(1,-1).to(self.device)
+        self.cost_d_values_tensor = torch.FloatTensor(self.cost_d_values_tensor).view(1,1,-1).to(self.device)
 
         self.cost_episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
                                   for name in self.cost_scales.keys()}
@@ -865,6 +872,7 @@ class LeggedRobot(BaseTask):
         self.obs_scales = self.cfg.normalization.obs_scales
         self.reward_scales = class_to_dict(self.cfg.rewards.scales)
         self.cost_scales = class_to_dict(self.cfg.costs.scales)
+        self.cost_d_values = class_to_dict(self.cfg.costs.d_values)
         self.command_ranges = class_to_dict(self.cfg.commands.ranges)
         if self.cfg.terrain.mesh_type not in ['heightfield', 'trimesh']:
             self.cfg.terrain.curriculum = False
@@ -1141,7 +1149,7 @@ class LeggedRobot(BaseTask):
     def _cost_base_height(self):
         # Penalize base height away from target
         base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
-        return 1.*(base_height < self.cfg.rewards.base_height_target)
+        return torch.square(base_height - self.cfg.rewards.base_height_target)
     
     def _cost_feet_air_time(self):
         # Reward long steps
@@ -1173,18 +1181,39 @@ class LeggedRobot(BaseTask):
     #     # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
     #     return 1.*(torch.square(self.base_lin_vel[:, 2]) > 0.16)
 
+    # def _cost_ang_vel_xy(self):
+    #     # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
+    #     #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
+    #     ang_vel_xy = torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+    #     #return torch.max(torch.zeros_like(ang_vel_xy),torch.abs(ang_vel_xy) - 4)
+    #     return torch.max(torch.zeros_like(ang_vel_xy),ang_vel_xy - 1)
+    
+    # def _cost_lin_vel_z(self):
+    #     # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
+    #     #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
+    #     # return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.abs(self.base_lin_vel[:, 2]) - 0.4)
+    #     return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.square(self.base_lin_vel[:, 2]) - 0.05)
+    
     def _cost_ang_vel_xy(self):
         # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
         #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
         ang_vel_xy = torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
         #return torch.max(torch.zeros_like(ang_vel_xy),torch.abs(ang_vel_xy) - 4)
-        return torch.max(torch.zeros_like(ang_vel_xy),ang_vel_xy - 8)
+        return ang_vel_xy
     
     def _cost_lin_vel_z(self):
         # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
         #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
         # return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.abs(self.base_lin_vel[:, 2]) - 0.4)
-        return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.square(self.base_lin_vel[:, 2]) - 0.8)
+        return torch.exp(torch.square(self.base_lin_vel[:, 2]))
+    
+    def _cost_xyz(self):
+        #return torch.sum(self.base_ang_vel[:, :2],dim=-1) + self.base_lin_vel[:,2]
+        # xyz = torch.cat([self.base_ang_vel[:, :2],self.base_lin_vel[:,2].view(-1,1)],dim=-1)
+        # xyz = torch.mean(torch.square(xyz),dim=-1)
+        z = torch.exp(torch.square(self.base_lin_vel[:,2]))
+        xy = torch.exp(torch.norm(self.base_ang_vel[:, :2],dim=-1))
+        return xy + z
     
     def _cost_torques(self):
         # Penalize torques

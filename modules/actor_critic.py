@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 import torch.nn.functional as F 
-from modules.common_modules import Actor, StateHistoryEncoder, get_activation
+from modules.common_modules import Actor, StateHistoryEncoder, cal_dormant_ratio, get_activation
 
 class ActorCriticRMA(nn.Module):
     is_recurrent = False
@@ -413,6 +413,26 @@ class ActorCriticConstraintRMA(nn.Module):
     def infer_scandots_latent(self, obs):
         scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
         return self.scan_encoder(scan)
+    
+    def infer_dormant_ratio(self,obs,hist_encoding=False, scandots_latent=None, **kwargs):
+        if self.if_scan_encode:
+            obs_scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
+            if scandots_latent is None:
+                scan_latent = self.scan_encoder(obs_scan)   
+            else:
+                scan_latent = scandots_latent
+            obs_prop_scan = torch.cat([obs[:, :self.num_prop], scan_latent], dim=1)
+        else:
+            obs_prop_scan = obs[:, :self.num_prop + self.num_scan]
+        
+        if hist_encoding:
+            latent = self.infer_hist_latent(obs)
+        else:
+            latent = self.infer_priv_latent(obs)
+        backbone_input = torch.cat([obs_prop_scan,latent], dim=1)
+        dr = cal_dormant_ratio(self.actor_backbone,backbone_input)
+
+        return dr
 
 
 

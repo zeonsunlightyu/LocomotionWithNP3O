@@ -257,7 +257,7 @@ class RolloutStorageWithCost:
         def clear(self):
             self.__init__()
 
-    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, actions_shape, cost_shape,device='cpu'):
+    def __init__(self, num_envs, num_transitions_per_env, obs_shape, privileged_obs_shape, actions_shape, cost_shape,cost_d_values,device='cpu'):
 
         self.device = device
 
@@ -288,6 +288,7 @@ class RolloutStorageWithCost:
         self.advantages = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.cost_advantages = torch.zeros(num_transitions_per_env, num_envs, *cost_shape, device=self.device)
         self.cost_violation = torch.zeros(num_transitions_per_env, num_envs, *cost_shape, device=self.device)
+        self.cost_d_values = cost_d_values
     
         self.mu = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.sigma = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
@@ -376,7 +377,9 @@ class RolloutStorageWithCost:
         cost_adv_std = self.cost_advantages.view(self.num_envs*self.num_transitions_per_env,-1).std(0)
         # Normalized cost related
         self.cost_advantages = (self.cost_advantages - cost_adv_mean.view(1,1,-1)) / (cost_adv_std.view(1,1,-1) + 1e-8)
-        self.cost_violation = ((1.-gamma)*self.cost_returns + cost_adv_mean.view(1,1,-1)) / (cost_adv_std.view(1,1,-1) + 1e-8)
+        # self.cost_violation = ((1.-gamma)*self.cost_returns + cost_adv_mean.view(1,1,-1)) / (cost_adv_std.view(1,1,-1) + 1e-8)
+        self.cost_violation = ((1.-gamma)*(self.cost_returns - self.cost_d_values) + cost_adv_mean.view(1,1,-1)) / (cost_adv_std.view(1,1,-1) + 1e-8)
+
 
     def get_statistics(self):
         done = self.dones
