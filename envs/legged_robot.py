@@ -1161,64 +1161,20 @@ class LeggedRobot(BaseTask):
         self.feet_air_time += self.dt
         rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1) # reward only on first contact with the ground
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
-        cost_airTime = 1.*(rew_airTime < 0.0) # larger than zero means long step then constraint takes no effect,less the zero means short step,positive cost should be returned
         self.feet_air_time *= ~contact_filt
-        return cost_airTime
-    
-    # def _cost_ang_vel_xy(self):
-    #     # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
-    #     return 1.*(torch.mean(torch.abs(self.base_ang_vel[:, :2]), dim=1) - 0.5 > 0.0)
-    
-    # def _cost_lin_vel_z(self):
-    #     # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
-    #     return 1.*(torch.abs(self.base_lin_vel[:, 2]) - 0.2 > 0.0)
-
-    # def _cost_ang_vel_xy(self):
-    #     # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
-    #     return 1.*(torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1) > 16)
-    
-    # def _cost_lin_vel_z(self):
-    #     # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
-    #     return 1.*(torch.square(self.base_lin_vel[:, 2]) > 0.16)
-
-    # def _cost_ang_vel_xy(self):
-    #     # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
-    #     #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
-    #     ang_vel_xy = torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
-    #     #return torch.max(torch.zeros_like(ang_vel_xy),torch.abs(ang_vel_xy) - 4)
-    #     return torch.max(torch.zeros_like(ang_vel_xy),ang_vel_xy - 1)
-    
-    # def _cost_lin_vel_z(self):
-    #     # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
-    #     #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
-    #     # return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.abs(self.base_lin_vel[:, 2]) - 0.4)
-    #     return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.square(self.base_lin_vel[:, 2]) - 0.05)
+        return rew_airTime
     
     def _cost_ang_vel_xy(self):
-        # Penalize xy axes base angular velocity,cost is 1 if average greater than 0.5 rad/s
-        #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
-        ang_vel_xy = torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
-        #return torch.max(torch.zeros_like(ang_vel_xy),torch.abs(ang_vel_xy) - 4)
+        ang_vel_xy = 0.01*torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
         return ang_vel_xy
     
     def _cost_lin_vel_z(self):
-        # Penalize z axis base linear velocity, cost is 1 if greater than 0.1 m/s
-        #torch.mean(torch.max(torch.zeros_like(self.dof_vel),torch.abs(self.dof_vel) - (self.dof_vel_limits/2.)),dim=1)
-        # return torch.max(torch.zeros_like(self.base_lin_vel[:, 2]),torch.abs(self.base_lin_vel[:, 2]) - 0.4)
-        return torch.exp(torch.square(self.base_lin_vel[:, 2]))
-    
-    def _cost_xyz(self):
-        #return torch.sum(self.base_ang_vel[:, :2],dim=-1) + self.base_lin_vel[:,2]
-        # xyz = torch.cat([self.base_ang_vel[:, :2],self.base_lin_vel[:,2].view(-1,1)],dim=-1)
-        # xyz = torch.mean(torch.square(xyz),dim=-1)
-        z = torch.exp(torch.square(self.base_lin_vel[:,2]))
-        xy = torch.exp(torch.norm(self.base_ang_vel[:, :2],dim=-1))
-        return xy + z
+        return torch.square(self.base_lin_vel[:, 2])
     
     def _cost_torques(self):
         # Penalize torques
-        torque_squres = torch.sum(torch.square(self.torques),dim=1)
-        return torch.max(torch.zeros_like(torque_squres),torque_squres - 1500)
+        torque_squres = 0.0001*torch.sum(torch.square(self.torques),dim=1)
+        return torque_squres
     
     def _cost_walking_style(self):
         # number of contact must greater than 2 at each frame

@@ -170,7 +170,6 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
             feet_contact_forces = 0.1
             ang_vel_xy = 1.
             lin_vel_z = 1.
-            # xyz = 1
  
         class d_values:
             pos_limit = 0.0
@@ -180,9 +179,8 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
             acc_smoothness = 0.0
             collision = 0.0
             feet_contact_forces = 0.0
-            ang_vel_xy = 1
+            ang_vel_xy = 0.0
             lin_vel_z = 0.0
-            # xyz = 0.0
     
     class cost:
         num_costs = 9
@@ -197,6 +195,9 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
         learning_rate = 5.e-4
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
+        cost_value_loss_coef = 1.0
+        cost_loss_coef = 0.01
+        cost_viol_loss_coef = 1
 
     class policy( LeggedRobotCfgPPO.policy):
         init_noise_std = 1.0

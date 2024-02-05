@@ -21,6 +21,8 @@ class NP3O:
                  gamma=0.998,
                  lam=0.95,
                  value_loss_coef=1.0,
+                 cost_value_loss_coef=1.0,
+                 cost_viol_loss_coef=1.0,
                  entropy_coef=0.0,
                  learning_rate=1e-3,
                  max_grad_norm=1.0,
@@ -51,7 +53,8 @@ class NP3O:
         self.num_learning_epochs = num_learning_epochs
         self.num_mini_batches = num_mini_batches
         self.value_loss_coef = value_loss_coef
-        self.cost_value_loss_coef = value_loss_coef
+        self.cost_value_loss_coef = cost_value_loss_coef
+        self.cost_viol_loss_coef = cost_viol_loss_coef
         self.entropy_coef = entropy_coef
         self.gamma = gamma
         self.lam = lam
@@ -173,7 +176,6 @@ class NP3O:
         mean_viol_loss = 0
         mean_surrogate_loss = 0
         mean_priv_reg_loss = 0
-        mean_dromant_value = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -225,7 +227,7 @@ class NP3O:
                                                         value_batch=cost_value_batch,
                                                         returns_batch=cost_returns_batch)
 
-                main_loss = surrogate_loss + viol_loss
+                main_loss = surrogate_loss + self.cost_viol_loss_coef * viol_loss 
                 combine_value_loss = self.cost_value_loss_coef * cost_value_loss + self.value_loss_coef * value_loss
                 entropy_loss = - self.entropy_coef * entropy_batch.mean()
 
@@ -252,10 +254,6 @@ class NP3O:
                 nn.utils.clip_grad_norm_(self.actor_critic.history_encoder.parameters(), self.max_grad_norm)
                 self.hist_encoder_optimizer.step()
 
-                # Compute dormant value
-                with torch.no_grad():
-                    mean_dromant_value += self.actor_critic.infer_dormant_ratio(obs_batch)
-
                 mean_priv_reg_loss += priv_reg_loss.item()
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
@@ -264,11 +262,10 @@ class NP3O:
         mean_viol_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_priv_reg_loss /= num_updates
-        mean_dromant_value /= num_updates
 
         self.storage.clear()
    
-        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss, mean_dromant_value
+        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss
     
     def update_depth_actor(self, actions_student_batch, actions_teacher_batch):
         if self.if_depth:
