@@ -120,7 +120,7 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
         friction_range = [0.5, 1.25]
         randomize_base_mass = True
         added_mass_range = [-1., 1.]
-        randomize_base_com = False
+        randomize_base_com = True
         added_com_range = [-0.1, 0.1]
         push_robots = True
         push_interval_s = 15
@@ -224,5 +224,5 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticConstraintRMA'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 3000
+        max_iterations = 4000
   

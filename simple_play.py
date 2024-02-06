@@ -54,7 +54,7 @@ def play(args):
                                                       env.cfg.env.history_len,
                                                       env.num_actions,
                                                       **policy_cfg_dict)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_3000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
 
@@ -96,11 +96,11 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 1
+        env.commands[:,0] = 0.8
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
-        actions = policy.act_inference(obs,hist_encoding=True)
+        actions = policy.act_inference(obs,hist_encoding=False)
         obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
         env.gym.step_graphics(env.sim) # required to render in headless mode
         env.gym.render_all_camera_sensors(env.sim)
