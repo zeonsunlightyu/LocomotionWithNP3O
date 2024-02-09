@@ -433,6 +433,4 @@ class ActorCriticConstraintRMA(nn.Module):
         dr = cal_dormant_ratio(self.actor_backbone,backbone_input)
 
         return dr
-
-
-
+    

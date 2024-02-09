@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from copy import deepcopy
 from collections import defaultdict
+from torch.nn import functional as F
 
 def get_activation(act_name):
     if act_name == "elu":
@@ -239,3 +240,80 @@ def perturb(net, optimizer, perturb_factor):
             param.data = net.state_dict()[name]
     optimizer.state = defaultdict(dict)
     return net, optimizer
+
+class BetaVAE(nn.Module):
+
+    def __init__(self,
+                 in_dim,
+                 latent_dim = 19,
+                 encoder_hidden_dims = [128,64],
+                 decoder_hidden_dims = [64,128],
+                 output_dim = 48,
+                 beta: int = 0.1) -> None:
+        
+        super(BetaVAE, self).__init__()
+
+        self.latent_dim = latent_dim
+        self.beta = beta
+        
+        encoder_layers = []
+        encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
+                                            nn.LayerNorm(encoder_hidden_dims[0]),
+                                            nn.LeakyReLU()))
+        for l in range(len(encoder_hidden_dims)-1):
+            encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
+                                        nn.LayerNorm(encoder_hidden_dims[l+1]),
+                                        nn.LeakyReLU()))
+        self.encoder = nn.Sequential(*encoder_layers)
+
+        self.fc_mu = nn.Linear(encoder_hidden_dims[-1], latent_dim-3)
+        self.fc_var = nn.Linear(encoder_hidden_dims[-1], latent_dim-3)
+        self.fc_vel = nn.Linear(encoder_hidden_dims[-1], 3)
+
+
+        # Build Decoder
+        decoder_layers = []
+        decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
+                                            nn.LayerNorm(decoder_hidden_dims[0]),
+                                            nn.LeakyReLU()))
+        for l in range(len(decoder_hidden_dims)):
+            if l == len(decoder_hidden_dims) - 1:
+                decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
+            else:
+                decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
+                                        nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                        nn.LeakyReLU()))
+
+        self.decoder = nn.Sequential(*decoder_layers)
+
+    def encode(self, input):
+       
+        result = self.encoder(input)
+        mu = self.fc_mu(result)
+        log_var = self.fc_var(result)
+        vel = self.fc_vel(result)
+
+        return [mu,log_var,vel]
+
+    def decode(self, z,vel):
+        result = torch.cat([z,vel],dim=-1)
+        result = self.decoder(result)
+        return result
+
+    def reparameterize(self, mu, logvar):
+       
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return eps * std + mu
+
+    def forward(self, input):
+        mu,log_var,vel = self.encode(input)
+        z = self.reparameterize(mu, log_var)
+        return  [self.decode(z,vel),z, mu, log_var, vel]
+    
+def beta_vae_loss(recons,input,mu,log_var,target_vel,vel,beta):
+    recons_loss =F.mse_loss(recons, input)
+    kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
+    vel_recons_loss = F.mse_loss(target_vel,vel)
+    loss = recons_loss + beta*kld_loss + vel_recons_loss
+    return loss
