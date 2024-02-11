@@ -3,12 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from modules.actor_critic import ActorCriticRMA,ActorCriticConstraintRMA
+from modules.actor_critic import ActorCriticRMA
 from runner.rollout_storage import RolloutStorageWithCost
 from utils import unpad_trajectories
 
 class NP3O:
-    actor_critic: ActorCriticConstraintRMA
+    actor_critic: ActorCriticRMA
     def __init__(self,
                  actor_critic,
                  depth_encoder,
@@ -46,6 +46,8 @@ class NP3O:
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters()) + list(self.actor_critic.history_encoder.parameters())
+        self.imitation_optimizer = optim.Adam(imitation_params_list, lr=learning_rate)
         self.transition = RolloutStorageWithCost.Transition()
 
         # PPO parameters
@@ -62,18 +64,7 @@ class NP3O:
         self.use_clipped_value_loss = use_clipped_value_loss
         self.k_value = k_value
 
-        # Adaptation
-        self.hist_encoder_optimizer = optim.Adam(self.actor_critic.history_encoder.parameters(), lr=learning_rate)
-        self.priv_reg_coef_schedual = priv_reg_coef_schedual
-
-        # Depth encoder
-        self.if_depth = depth_encoder != None
-        if self.if_depth:
-            self.depth_encoder = depth_encoder
-            self.depth_encoder_optimizer = optim.Adam(self.depth_encoder.parameters(), lr=depth_encoder_paras["learning_rate"])
-            self.depth_encoder_paras = depth_encoder_paras
-            self.depth_actor = depth_actor
-            self.depth_actor_optimizer = optim.Adam([*self.depth_actor.parameters(), *self.depth_encoder.parameters()], lr=depth_encoder_paras["learning_rate"])
+        self.substeps = 1
 
     def init_storage(self, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, action_shape,cost_shape,cost_d_values):
         self.storage = RolloutStorageWithCost(num_envs, num_transitions_per_env, actor_obs_shape,  critic_obs_shape, action_shape,cost_shape,cost_d_values,self.device)
@@ -87,7 +78,7 @@ class NP3O:
     def act(self, obs, critic_obs, info, hist_encoding=False):
         if self.actor_critic.is_recurrent:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
-        self.transition.actions = self.actor_critic.act(obs, hist_encoding).detach()
+        self.transition.actions = self.actor_critic.act(obs).detach()
         self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
         self.transition.cost_values = self.actor_critic.evaluate_cost(critic_obs).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
@@ -175,7 +166,7 @@ class NP3O:
         mean_cost_value_loss = 0
         mean_viol_loss = 0
         mean_surrogate_loss = 0
-        mean_priv_reg_loss = 0
+        mean_imitation_loss = 0
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -244,28 +235,26 @@ class NP3O:
                 mean_viol_loss += viol_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
 
-                # Adaptation module update
-                hist_latent_batch = self.actor_critic.infer_hist_latent(obs_batch)
-                with torch.inference_mode():
-                    priv_latent_batch = self.actor_critic.infer_priv_latent(obs_batch)
-                priv_reg_loss = (priv_latent_batch.detach() - hist_latent_batch).norm(p=2, dim=1).mean()
-                self.hist_encoder_optimizer.zero_grad()
-                priv_reg_loss.backward()
-                nn.utils.clip_grad_norm_(self.actor_critic.history_encoder.parameters(), self.max_grad_norm)
-                self.hist_encoder_optimizer.step()
+                # imitation module gradient step
+                for epoch in range(self.substeps):
+                    imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
+                    self.imitation_optimizer.zero_grad()
+                    imitation_loss.backward()
+                    self.imitation_optimizer.step()
 
-                mean_priv_reg_loss += priv_reg_loss.item()
+                    mean_imitation_loss += imitation_loss.item()
+
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
         mean_cost_value_loss /= num_updates
         mean_viol_loss /= num_updates
         mean_surrogate_loss /= num_updates
-        mean_priv_reg_loss /= num_updates
+        mean_imitation_loss /= num_updates*self.substeps
 
         self.storage.clear()
    
-        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss
+        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss,mean_imitation_loss
     
     def update_depth_actor(self, actions_student_batch, actions_teacher_batch):
         if self.if_depth:

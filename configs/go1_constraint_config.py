@@ -35,8 +35,8 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
         num_envs = 4096
 
         n_scan = 132
-        n_priv_latent = 4 + 1 + 12 + 12 + 6
-        n_proprio = 46
+        n_priv_latent = 4 + 1 + 12 + 12 + 6 - 3
+        n_proprio = 46 + 3
         history_len = 10
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
 
@@ -81,7 +81,7 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.25
+        base_height_target = 0.24
         class scales( LeggedRobotCfg.rewards.scales ):
             # torques = -0.0001
             # termination = 0.0
@@ -221,8 +221,8 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_go1_constraint'
-        policy_class_name = 'ActorCriticConstraintRMA'
+        policy_class_name = 'ActorCriticRMA'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 4000
+        max_iterations = 7000
   

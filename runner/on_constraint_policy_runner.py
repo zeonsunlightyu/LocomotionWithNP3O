@@ -7,7 +7,7 @@ import warnings
 from torch.utils.tensorboard import SummaryWriter
 import torch
 
-from modules import ActorCriticRMA,ActorCriticConstraintRMA,Estimator
+from modules import ActorCriticRMA
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
@@ -138,7 +138,7 @@ class OnConstraintPolicyRunner:
             #update k value for better expolration
             k_value = self.alg.update_k_value(it)
             
-            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_priv_reg_loss = self.alg.update()
+            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_imitation_loss = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -173,11 +173,12 @@ class OnConstraintPolicyRunner:
         #mean_std = self.alg.actor_critic.std.mean()
         mean_std = self.alg.actor_critic.get_std().mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs['collection_time'] + locs['learn_time']))
-
+        #mean_kl_loss,mean_recons_loss,mean_vel_recons_loss
         self.writer.add_scalar('Loss/value_function', locs['mean_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/cost_value_function', locs['mean_cost_value_loss'], locs['it'])
         self.writer.add_scalar('Loss/surrogate', locs['mean_surrogate_loss'], locs['it'])
         self.writer.add_scalar('Loss/mean_viol_loss', locs['mean_viol_loss'], locs['it'])
+        self.writer.add_scalar('Loss/mean_imitation_loss', locs['mean_imitation_loss'], locs['it'])
         self.writer.add_scalar('Loss/learning_rate', self.alg.learning_rate, locs['it'])
         self.writer.add_scalar('Policy/mean_noise_std', mean_std.item(), locs['it'])
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
@@ -269,26 +270,9 @@ class OnConstraintPolicyRunner:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic.act_inference
     
-    def get_depth_actor_inference_policy(self, device=None):
-        self.alg.depth_actor.eval() # switch to evaluation mode (dropout for example)
-        if device is not None:
-            self.alg.depth_actor.to(device)
-        return self.alg.depth_actor
-    
     def get_actor_critic(self, device=None):
         self.alg.actor_critic.eval() # switch to evaluation mode (dropout for example)
         if device is not None:
             self.alg.actor_critic.to(device)
         return self.alg.actor_critic
     
-    def get_estimator_inference_policy(self, device=None):
-        self.alg.estimator.eval() # switch to evaluation mode (dropout for example)
-        if device is not None:
-            self.alg.estimator.to(device)
-        return self.alg.estimator.inference
-
-    def get_depth_encoder_inference_policy(self, device=None):
-        self.alg.depth_encoder.eval()
-        if device is not None:
-            self.alg.depth_encoder.to(device)
-        return self.alg.depth_encoder

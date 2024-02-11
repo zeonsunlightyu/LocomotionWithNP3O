@@ -23,6 +23,21 @@ def get_activation(act_name):
         print("invalid activation function!")
         return None
     
+def mlp_factory(activation, input_dims, out_dims, hidden_dims,last_act=False):
+    layers = []
+    layers.append(nn.Linear(input_dims, hidden_dims[0]))
+    layers.append(activation)
+    for l in range(len(hidden_dims)-1):
+        layers.append(nn.Linear(hidden_dims[l], hidden_dims[l + 1]))
+        layers.append(activation)
+
+    if out_dims:
+        layers.append(nn.Linear(hidden_dims[-1], out_dims))
+    if last_act:
+        layers.append(activation)
+
+    return layers
+    
 class StateHistoryEncoder(nn.Module):
     def __init__(self, activation_fn, input_size, tsteps, output_size, tanh_encoder_output=False):
         # self.device = device
@@ -69,105 +84,6 @@ class StateHistoryEncoder(nn.Module):
         output = self.conv_layers(projection.reshape([nd, T, -1]).permute((0, 2, 1)))
         output = self.linear_output(output)
         return output
-
-class Actor(nn.Module):
-    def __init__(self, num_prop, 
-                 num_scan, 
-                 num_actions, 
-                 scan_encoder_dims,
-                 actor_hidden_dims, 
-                 priv_encoder_dims, 
-                 num_priv_latent, 
-                 num_hist, activation, 
-                 tanh_encoder_output=False) -> None:
-        super().__init__()
-        # prop -> scan -> priv_explicit -> priv_latent -> hist
-        # actor input: prop -> scan -> priv_explicit -> latent
-        self.num_prop = num_prop
-        self.num_scan = num_scan
-        self.num_hist = num_hist
-        self.num_actions = num_actions
-        self.num_priv_latent = num_priv_latent
-        self.if_scan_encode = scan_encoder_dims is not None and num_scan > 0
-
-        if len(priv_encoder_dims) > 0:
-            priv_encoder_layers = []
-            priv_encoder_layers.append(nn.Linear(num_priv_latent, priv_encoder_dims[0]))
-            priv_encoder_layers.append(activation)
-            for l in range(len(priv_encoder_dims) - 1):
-                priv_encoder_layers.append(nn.Linear(priv_encoder_dims[l], priv_encoder_dims[l + 1]))
-                priv_encoder_layers.append(activation)
-            self.priv_encoder = nn.Sequential(*priv_encoder_layers)
-            priv_encoder_output_dim = priv_encoder_dims[-1]
-        else:
-            self.priv_encoder = nn.Identity()
-            priv_encoder_output_dim = num_priv_latent
-
-        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist, priv_encoder_output_dim)
-
-        if self.if_scan_encode:
-            scan_encoder = []
-            scan_encoder.append(nn.Linear(num_scan, scan_encoder_dims[0]))
-            scan_encoder.append(activation)
-            for l in range(len(scan_encoder_dims) - 1):
-                if l == len(scan_encoder_dims) - 2:
-                    scan_encoder.append(nn.Linear(scan_encoder_dims[l], scan_encoder_dims[l+1]))
-                    scan_encoder.append(nn.Tanh())
-                else:
-                    scan_encoder.append(nn.Linear(scan_encoder_dims[l], scan_encoder_dims[l + 1]))
-                    scan_encoder.append(activation)
-            self.scan_encoder = nn.Sequential(*scan_encoder)
-            self.scan_encoder_output_dim = scan_encoder_dims[-1]
-        else:
-            self.scan_encoder = nn.Identity()
-            self.scan_encoder_output_dim = num_scan
-        
-        actor_layers = []
-        actor_layers.append(nn.Linear(num_prop+
-                                      self.scan_encoder_output_dim+
-                                      priv_encoder_output_dim, 
-                                      actor_hidden_dims[0]))
-        actor_layers.append(activation)
-        for l in range(len(actor_hidden_dims)):
-            if l == len(actor_hidden_dims) - 1:
-                actor_layers.append(nn.Linear(actor_hidden_dims[l], num_actions))
-            else:
-                actor_layers.append(nn.Linear(actor_hidden_dims[l], actor_hidden_dims[l + 1]))
-                actor_layers.append(activation)
-        if tanh_encoder_output:
-            actor_layers.append(nn.Tanh())
-        self.actor_backbone = nn.Sequential(*actor_layers)
-
-    def forward(self, obs, hist_encoding: bool, eval=False, scandots_latent=None):
-        if self.if_scan_encode:
-            obs_scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
-            if scandots_latent is None:
-                scan_latent = self.scan_encoder(obs_scan)   
-            else:
-                scan_latent = scandots_latent
-            obs_prop_scan = torch.cat([obs[:, :self.num_prop], scan_latent], dim=1)
-        else:
-            obs_prop_scan = obs[:, :self.num_prop + self.num_scan]
-        
-        if hist_encoding:
-            latent = self.infer_hist_latent(obs)
-        else:
-            latent = self.infer_priv_latent(obs)
-        backbone_input = torch.cat([obs_prop_scan,latent], dim=1)
-        backbone_output = self.actor_backbone(backbone_input)
-        return backbone_output
-    
-    def infer_priv_latent(self, obs):
-        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + self.num_priv_latent]
-        return self.priv_encoder(priv)
-    
-    def infer_hist_latent(self, obs):
-        hist = obs[:, -self.num_hist*self.num_prop:]
-        return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
-    
-    def infer_scandots_latent(self, obs):
-        scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
-        return self.scan_encoder(scan)
     
 def weight_init(m):
     if isinstance(m, nn.Linear):
@@ -179,67 +95,6 @@ def weight_init(m):
         nn.init.orthogonal_(m.weight.data, gain)
         if hasattr(m.bias, 'data'):
             m.bias.data.fill_(0.0)
-
-class LinearOutputHook:
-    def __init__(self):
-        self.outputs = []
-
-    def __call__(self, module, module_in, module_out):
-        self.outputs.append(module_out)
-
-def cal_dormant_ratio(model, *inputs, percentage=0.025):
-    hooks = []
-    hook_handlers = []
-    total_neurons = 0
-    dormant_neurons = 0
-
-    for _, module in model.named_modules():
-        if isinstance(module, nn.Linear):
-            hook = LinearOutputHook()
-            hooks.append(hook)
-            hook_handlers.append(module.register_forward_hook(hook))
-
-    with torch.no_grad():
-        model(*inputs)
-
-    for module, hook in zip(
-        (module
-         for module in model.modules() if isinstance(module, nn.Linear)),
-            hooks):
-        with torch.no_grad():
-            for output_data in hook.outputs:
-                mean_output = output_data.abs().mean(0)
-                avg_neuron_output = mean_output.mean()
-                dormant_indices = (mean_output < avg_neuron_output *
-                                   percentage).nonzero(as_tuple=True)[0]
-                total_neurons += module.weight.shape[0]
-                dormant_neurons += len(dormant_indices)         
-
-    for hook in hooks:
-        hook.outputs.clear()
-
-    for hook_handler in hook_handlers:
-        hook_handler.remove()
-
-    return dormant_neurons / total_neurons
-
-
-def perturb(net, optimizer, perturb_factor):
-    linear_keys = [
-        name for name, mod in net.named_modules()
-        if isinstance(mod, torch.nn.Linear)
-    ]
-    new_net = deepcopy(net)
-    new_net.apply(weight_init)
-
-    for name, param in net.named_parameters():
-        if any(key in name for key in linear_keys):
-            noise = new_net.state_dict()[name] * (1 - perturb_factor)
-            param.data = param.data * perturb_factor + noise
-        else:
-            param.data = net.state_dict()[name]
-    optimizer.state = defaultdict(dict)
-    return net, optimizer
 
 class BetaVAE(nn.Module):
 
@@ -311,9 +166,3 @@ class BetaVAE(nn.Module):
         z = self.reparameterize(mu, log_var)
         return  [self.decode(z,vel),z, mu, log_var, vel]
     
-def beta_vae_loss(recons,input,mu,log_var,target_vel,vel,beta):
-    recons_loss =F.mse_loss(recons, input)
-    kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim = 1), dim = 0)
-    vel_recons_loss = F.mse_loss(target_vel,vel)
-    loss = recons_loss + beta*kld_loss + vel_recons_loss
-    return loss

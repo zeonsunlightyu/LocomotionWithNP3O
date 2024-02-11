@@ -54,7 +54,7 @@ def play(args):
                                                       env.cfg.env.history_len,
                                                       env.num_actions,
                                                       **policy_cfg_dict)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_7000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
 
@@ -76,7 +76,7 @@ def play(args):
 
     img_idx = 0
 
-    video_duration = 100
+    video_duration = 20
     num_frames = int(video_duration / env.dt)
     print(f'gathering {num_frames} frames')
     video = None
@@ -100,7 +100,7 @@ def play(args):
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
-        actions = policy.act_inference(obs,hist_encoding=False)
+        actions,_ = policy.act_student(obs)
         obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
         env.gym.step_graphics(env.sim) # required to render in headless mode
         env.gym.render_all_camera_sensors(env.sim)
@@ -120,8 +120,7 @@ def play(args):
 
     video.release()
 if __name__ == '__main__':
-    task_registry.register("go1", LeggedRobot, Go1RoughCfg(), Go1RoughCfgPPO())
     task_registry.register("go1N3PO",LeggedRobot,Go1ConstraintRoughCfg(),Go1ConstraintRoughCfgPPO())
-    RECORD_FRAMES = False
+    RECORD_FRAMES = True
     args = get_args()
     play(args)

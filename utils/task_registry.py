@@ -5,7 +5,7 @@ import torch
 import numpy as np
 
 from envs.vec_env import VecEnv
-from runner import OnPolicyRunner,OnConstraintPolicyRunner
+from runner import OnConstraintPolicyRunner
 
 from global_config import ROOT_DIR, ENVS_DIR
 from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
@@ -71,7 +71,7 @@ class TaskRegistry():
                             headless=args.headless)
         return env, env_cfg
 
-    def make_alg_runner(self, env, name=None, args=None, train_cfg=None, log_root="default") -> Tuple[OnPolicyRunner, LeggedRobotCfgPPO]:
+    def make_alg_runner(self, env, name=None, args=None, train_cfg=None, log_root="default") -> Tuple[OnConstraintPolicyRunner, LeggedRobotCfgPPO]:
         """ Creates the training algorithm  either from a registered namme or from the provided config file.
 
         Args:
