@@ -39,7 +39,7 @@ def play(args):
     env_cfg.domain_rand.randomize_base_com = False
     env_cfg.domain_rand.randomize_base_mass = False
     env_cfg.domain_rand.randomize_motor = False
-    
+    env_cfg.domain_rand.randomize_lag_timesteps = False
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
@@ -54,7 +54,8 @@ def play(args):
                                                       env.cfg.env.history_len,
                                                       env.num_actions,
                                                       **policy_cfg_dict)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_7000.pt'))
+    print(policy)
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_1000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
 
@@ -76,7 +77,7 @@ def play(args):
 
     img_idx = 0
 
-    video_duration = 20
+    video_duration = 40
     num_frames = int(video_duration / env.dt)
     print(f'gathering {num_frames} frames')
     video = None
@@ -96,7 +97,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 0.8
+        env.commands[:,0] = 0.5
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0

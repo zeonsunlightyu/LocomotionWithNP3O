@@ -46,8 +46,13 @@ class NP3O:
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
-        imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters()) + list(self.actor_critic.history_encoder.parameters())
-        self.imitation_optimizer = optim.Adam(imitation_params_list, lr=learning_rate)
+        #self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters()) + list(self.actor_critic.history_encoder.parameters())
+        if hasattr(self.actor_critic, 'imitation_learning_loss') and callable(self.actor_critic.imitation_learning_loss):
+            self.imi_flag = True
+        else:
+            self.imi_flag = False
+        self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters())
+        self.imitation_optimizer = optim.Adam(self.imitation_params_list, lr=learning_rate)
         self.transition = RolloutStorageWithCost.Transition()
 
         # PPO parameters
@@ -75,7 +80,7 @@ class NP3O:
     def train_mode(self):
         self.actor_critic.train()
 
-    def act(self, obs, critic_obs, info, hist_encoding=False):
+    def act(self, obs, critic_obs, info):
         if self.actor_critic.is_recurrent:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
         self.transition.actions = self.actor_critic.act(obs).detach()
@@ -235,14 +240,18 @@ class NP3O:
                 mean_viol_loss += viol_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
 
-                # imitation module gradient step
-                for epoch in range(self.substeps):
-                    imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-                    self.imitation_optimizer.zero_grad()
-                    imitation_loss.backward()
-                    self.imitation_optimizer.step()
+                if self.imi_flag:
+                    # imitation module gradient step
+                    for epoch in range(self.substeps):
+                        imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
+                        self.imitation_optimizer.zero_grad()
+                        imitation_loss.backward()
+                        nn.utils.clip_grad_norm_(self.imitation_params_list, self.max_grad_norm)
+                        self.imitation_optimizer.step()
 
-                    mean_imitation_loss += imitation_loss.item()
+                        mean_imitation_loss += imitation_loss.item()
+                else:
+                    mean_imitation_loss += 0
 
 
         num_updates = self.num_learning_epochs * self.num_mini_batches

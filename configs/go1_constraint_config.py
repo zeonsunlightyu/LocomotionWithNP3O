@@ -35,13 +35,13 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
         num_envs = 4096
 
         n_scan = 132
-        n_priv_latent = 4 + 1 + 12 + 12 + 6 - 3
-        n_proprio = 46 + 3
+        n_priv_latent = 4 + 1 + 12 + 12 + 6
+        n_proprio = 46
         history_len = 10
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
+        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent #+ history_len*12 + history_len*(n_proprio-12)
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.34] # x,y,z [m]
+        pos = [0.0, 0.0, 0.42] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
             'FL_hip_joint': 0.1,   # [rad]
             'RL_hip_joint': 0.1,   # [rad]
@@ -69,19 +69,20 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
-        use_filter = False
+        use_filter = True
 
     class asset( LeggedRobotCfg.asset ):
-        file = '{ROOT_DIR}/resources/go1/urdf/go1.urdf'
+        file = '{ROOT_DIR}/resources/go2/urdf/go2.urdf'
         foot_name = "foot"
+        name = "go2"
         penalize_contacts_on = ["thigh", "calf"]
         terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
-        flip_visual_attachments = False
+        flip_visual_attachments = True
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.24
+        base_height_target = 0.42
         class scales( LeggedRobotCfg.rewards.scales ):
             # torques = -0.0001
             # termination = 0.0
@@ -117,9 +118,9 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.5, 1.25]
+        friction_range = [0.05, 4.5]
         randomize_base_mass = True
-        added_mass_range = [-1., 1.]
+        added_mass_range = [-1., 3.]
         randomize_base_com = True
         added_com_range = [-0.1, 0.1]
         push_robots = True
@@ -129,12 +130,8 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
         randomize_motor = True
         motor_strength_range = [0.9, 1.1]
 
-        delay_update_global_steps = 24 * 8000
-        action_delay = False
-        action_curr_step = [1, 1]
-        action_curr_step_scratch = [0, 1]
-        action_delay_view = 1
-        action_buf_len = 8
+        randomize_lag_timesteps = False
+        lag_timesteps = 6
     
     class depth( LeggedRobotCfg.depth):
         use_camera = False
@@ -192,6 +189,7 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         measure_heights = True
+        include_act_obs_pair_buf = False
 
 class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -225,4 +223,6 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
         max_iterations = 7000
+        resume = False
+        resume_path = './model_10000.pt'
   

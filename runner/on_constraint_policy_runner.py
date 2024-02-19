@@ -6,8 +6,9 @@ import warnings
 
 from torch.utils.tensorboard import SummaryWriter
 import torch
+from global_config import ROOT_DIR
 
-from modules import ActorCriticRMA
+from modules import ActorCriticRMA,ActorCriticRmaTrans,ActorCriticPureTrans
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
@@ -36,7 +37,13 @@ class OnConstraintPolicyRunner:
                                                       self.env.cfg.env.n_priv_latent,
                                                       self.env.cfg.env.history_len,
                                                       self.env.num_actions,
-                                                      **self.policy_cfg).to(self.device)
+                                                      **self.policy_cfg)
+        if self.cfg['resume']:
+            model_dict = torch.load(os.path.join(ROOT_DIR, self.cfg['resume_path']))
+            actor_critic.load_state_dict(model_dict['model_state_dict'])
+        
+        actor_critic.to(self.device)
+        
 
         # Depth encoder
         self.if_depth = self.depth_encoder_cfg["if_depth"]
@@ -109,7 +116,7 @@ class OnConstraintPolicyRunner:
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                    
-                    actions = self.alg.act(obs, critic_obs, infos, False)
+                    actions = self.alg.act(obs, critic_obs, infos)
                     obs, privileged_obs, rewards,costs,dones, infos = self.env.step(actions)  # obs has changed to next_obs !! if done obs has been reset
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs,rewards,costs,dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device),costs.to(self.device),dones.to(self.device)

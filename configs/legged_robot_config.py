@@ -58,6 +58,7 @@ class LeggedRobotCfg(BaseConfig):
         restitution = 0.
         # rough terrain only:
         measure_heights = True
+        include_act_obs_pair_buf = False
         # measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,
         #                      0.8]  # 1mx1.6m rectangle (without center line)
         # measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
@@ -111,6 +112,7 @@ class LeggedRobotCfg(BaseConfig):
         decimation = 4
 
         use_filter = False
+        hip_scale_reduction = 1
 
     class asset:
         file = ""
@@ -142,18 +144,21 @@ class LeggedRobotCfg(BaseConfig):
         randomize_base_com = True
         added_com_range = [-0.2, 0.2]
         push_robots = True
-        push_interval_s = 8
-        max_push_vel_xy = 0.5
+        push_interval_s = 15
+        max_push_vel_xy = 1
 
         randomize_motor = True
         motor_strength_range = [0.8, 1.2]
 
-        delay_update_global_steps = 24 * 8000
-        action_delay = False
-        action_curr_step = [1, 1]
-        action_curr_step_scratch = [0, 1]
-        action_delay_view = 1
-        action_buf_len = 8
+        randomize_lag_timesteps = True
+        lag_timesteps = 6
+
+        # delay_update_global_steps = 24 * 8000
+        # action_delay = False
+        # action_curr_step = [1, 1]
+        # action_curr_step_scratch = [0, 1]
+        # action_delay_view = 1
+        # action_buf_len = 5
 
     class rewards:
         class scales:
@@ -288,7 +293,5 @@ class LeggedRobotCfgPPO(BaseConfig):
         run_name = ''
         # load and resume
         resume = False
-        load_run = -1 # -1 = last run
-        checkpoint = -1 # -1 = last saved model
         resume_path = None # updated from load_run and chkpt
     

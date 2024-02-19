@@ -102,7 +102,7 @@ class LeggedRobot(BaseTask):
         self.motor_strength = (str_rng[1] - str_rng[0]) * torch.rand(2, self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False) + str_rng[0]
         if self.cfg.env.history_encoding:
              self.obs_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.cfg.env.n_proprio, device=self.device, dtype=torch.float)
-        self.action_history_buf = torch.zeros(self.num_envs, self.cfg.domain_rand.action_buf_len, self.num_dofs, device=self.device, dtype=torch.float)
+        self.action_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.num_dofs, device=self.device, dtype=torch.float)
         self.contact_buf = torch.zeros(self.num_envs, self.cfg.env.contact_buf_len, 4, device=self.device, dtype=torch.float)
 
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # x vel, y vel, yaw vel, heading
@@ -141,6 +141,8 @@ class LeggedRobot(BaseTask):
                                             self.cfg.depth.buffer_len, 
                                             self.cfg.depth.resized[1], 
                                             self.cfg.depth.resized[0]).to(self.device)
+            
+        self.lag_buffer = [torch.zeros_like(self.dof_pos) for i in range(self.cfg.domain_rand.lag_timesteps+1)]
 
     def _create_envs(self):
         """ Creates environments:
@@ -251,14 +253,15 @@ class LeggedRobot(BaseTask):
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
         self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
-        if self.cfg.domain_rand.action_delay:
-            if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
-                if len(self.cfg.domain_rand.action_curr_step) != 0:
-                    self.delay = torch.tensor(self.cfg.domain_rand.action_curr_step.pop(0), device=self.device, dtype=torch.float)
-            if self.viewer:
-                self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
-            indices = -self.delay - 1
-            actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
+
+        # if self.cfg.domain_rand.action_delay:
+        #     if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
+        #         if len(self.cfg.domain_rand.action_curr_step) != 0:
+        #             self.delay = torch.tensor(self.cfg.domain_rand.action_curr_step.pop(0), device=self.device, dtype=torch.float)
+        #     if self.viewer:
+        #         self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
+        #     indices = -self.delay - 1
+        #     actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
 
         self.global_counter += 1   
         clip_actions = self.cfg.normalization.clip_actions
@@ -288,15 +291,15 @@ class LeggedRobot(BaseTask):
     
     def compute_observations(self):
        
-        obs_buf =torch.cat((self.base_ang_vel  * self.obs_scales.ang_vel,
-                            self.projected_gravity,
+        obs_buf =torch.cat((self.projected_gravity,
                             self.commands[:, :3] * self.commands_scale,
                             (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
                             self.dof_vel * self.obs_scales.dof_vel,
-                            self.action_history_buf[:,-1],
-                            self.contact_filt.float()-0.5),dim=-1)
+                            self.contact_filt.float()-0.5,
+                            self.action_history_buf[:,-1]),dim=-1)
 
         priv_latent = torch.cat((
+            self.base_ang_vel  * self.obs_scales.ang_vel,
             self.base_lin_vel * self.obs_scales.lin_vel,
             self.mass_params_tensor,
             self.friction_coeffs_tensor,
@@ -327,6 +330,12 @@ class LeggedRobot(BaseTask):
                 self.contact_filt.float().unsqueeze(1)
             ], dim=1)
         )
+
+        if self.cfg.terrain.include_act_obs_pair_buf:
+            # add to full observation history and action history to obs
+            pure_obs_hist = self.obs_history_buf[:,:,:-self.num_actions].reshape(self.num_envs,-1)
+            act_hist = self.action_history_buf.view(self.num_envs,-1)
+            self.obs_buf = torch.cat([self.obs_buf,pure_obs_hist,act_hist], dim=-1)
     
     def get_noisy_measurement(self, x, scale):
         if self.cfg.noise.add_noise:
@@ -561,14 +570,23 @@ class LeggedRobot(BaseTask):
         """
         if self.cfg.control.use_filter:
             actions = self._low_pass_action_filter(actions)
+
         #pd controller
-        actions_scaled = actions * self.cfg.control.action_scale
+        actions_scaled = actions[:, :12] * self.cfg.control.action_scale
+        actions_scaled[:, [0, 3, 6, 9]] *= self.cfg.control.hip_scale_reduction
+
+        if self.cfg.domain_rand.randomize_lag_timesteps:
+            self.lag_buffer = self.lag_buffer[1:] + [actions_scaled.clone()]
+            joint_pos_target = self.lag_buffer[0] + self.default_dof_pos
+        else:
+            joint_pos_target = actions_scaled + self.default_dof_pos
+
         control_type = self.cfg.control.control_type
         if control_type=="P":
             if not self.cfg.domain_rand.randomize_motor:  # TODO add strength to gain directly
-                torques = self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) - self.d_gains*self.dof_vel
+                torques = self.p_gains*(joint_pos_target- self.dof_pos) - self.d_gains*self.dof_vel
             else:
-                torques = self.motor_strength[0] * self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) - self.motor_strength[1] * self.d_gains*self.dof_vel
+                torques = self.motor_strength[0] * self.p_gains*(joint_pos_target - self.dof_pos) - self.motor_strength[1] * self.d_gains*self.dof_vel
                 
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
@@ -637,11 +655,6 @@ class LeggedRobot(BaseTask):
         self._reset_root_states(env_ids)
         self._resample_commands(env_ids)
 
-        # self.gym.simulate(self.sim)
-        # self.gym.fetch_results(self.sim, True)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
-
-
         # reset buffers
         self.last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
@@ -670,6 +683,9 @@ class LeggedRobot(BaseTask):
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
+
+        for i in range(len(self.lag_buffer)):
+            self.lag_buffer[i][env_ids, :] = 0
     
     def reset(self):
         """ Reset all robots"""
