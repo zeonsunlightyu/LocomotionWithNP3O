@@ -47,10 +47,12 @@ class NP3O:
         self.storage = None # initialized later
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
         #self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters()) + list(self.actor_critic.history_encoder.parameters())
-        if hasattr(self.actor_critic, 'imitation_learning_loss') and callable(self.actor_critic.imitation_learning_loss):
+        if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.teacher_act:
             self.imi_flag = True
+            print('running with imi loss on')
         else:
             self.imi_flag = False
+            print('running with imi loss off')
         self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters())
         self.imitation_optimizer = optim.Adam(self.imitation_params_list, lr=learning_rate)
         self.transition = RolloutStorageWithCost.Transition()

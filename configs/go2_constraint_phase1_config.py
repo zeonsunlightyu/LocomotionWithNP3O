@@ -30,15 +30,15 @@
 
 from configs.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class Go1ConstraintRoughCfg( LeggedRobotCfg ):
+class Go2ConstraintPhase1RoughCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
 
         n_scan = 132
         n_priv_latent = 4 + 1 + 12 + 12 + 6
         n_proprio = 46
-        history_len = 10
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent #+ history_len*12 + history_len*(n_proprio-12)
+        history_len = 5
+        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + history_len*12 + history_len*(n_proprio-12)
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
@@ -189,9 +189,9 @@ class Go1ConstraintRoughCfg( LeggedRobotCfg ):
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         measure_heights = True
-        include_act_obs_pair_buf = False
+        include_act_obs_pair_buf = True
 
-class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
+class Go2ConstraintPhase1RoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 5.e-4
@@ -215,14 +215,16 @@ class Go1ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
 
         tanh_encoder_output = False
         num_costs = 11
+
+        teacher_act = True
       
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
-        experiment_name = 'rough_go1_constraint'
-        policy_class_name = 'ActorCriticRMA'
+        experiment_name = 'rough_go2_constraint'
+        policy_class_name = 'ActorCriticRmaTrans'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
         max_iterations = 7000
         resume = False
-        resume_path = './model_10000.pt'
+        resume_path = ''
   

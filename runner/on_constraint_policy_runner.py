@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 from global_config import ROOT_DIR
 
-from modules import ActorCriticRMA,ActorCriticRmaTrans,ActorCriticPureTrans
+from modules import ActorCriticRMA,ActorCriticRmaTrans
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone

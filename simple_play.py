@@ -97,7 +97,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 0.5
+        env.commands[:,0] = 0.8
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
@@ -121,7 +121,9 @@ def play(args):
 
     video.release()
 if __name__ == '__main__':
-    task_registry.register("go1N3PO",LeggedRobot,Go1ConstraintRoughCfg(),Go1ConstraintRoughCfgPPO())
+    task_registry.register("go2N3poPhase1",LeggedRobot,Go2ConstraintPhase1RoughCfg(),Go2ConstraintPhase1RoughCfgPPO())
+    task_registry.register("go2N3poPhase2",LeggedRobot,Go2ConstraintPhase2RoughCfg(),Go2ConstraintPhase2RoughCfgPPO())
+    
     RECORD_FRAMES = True
     args = get_args()
     play(args)
