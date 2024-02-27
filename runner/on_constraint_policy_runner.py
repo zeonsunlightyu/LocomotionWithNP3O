@@ -12,7 +12,7 @@ from modules import ActorCriticRMA,ActorCriticRmaTrans
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
-from utils.helpers import partial_checkpoint_load
+from utils.helpers import hard_phase_schedualer, partial_checkpoint_load
 from copy import copy, deepcopy
 
 class OnConstraintPolicyRunner:
@@ -30,6 +30,8 @@ class OnConstraintPolicyRunner:
         self.device = device
         self.env = env
 
+        self.phase1_end = self.cfg["phase1_end"] 
+ 
         actor_critic_class = eval(self.cfg["policy_class_name"])  # ActorCritic
         actor_critic: ActorCriticRMA = actor_critic_class(self.env.cfg.env.n_proprio,
                                                       self.env.cfg.env.n_scan,
@@ -110,7 +112,16 @@ class OnConstraintPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
+        self.act_shed,self.imi_shed = hard_phase_schedualer(max_iters=tot_iter,
+                    phase1_end=self.phase1_end)
+
+     
         for it in range(self.current_learning_iteration, tot_iter):
+            act_teacher_flag = self.act_shed[it]
+            imi_flag = self.imi_shed[it]
+            self.alg.set_imi_flag(imi_flag)
+            self.alg.actor_critic.set_teacher_act(act_teacher_flag)
+            
             start = time.time()
             # Rollout
             with torch.inference_mode():

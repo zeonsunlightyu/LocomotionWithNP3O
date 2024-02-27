@@ -224,7 +224,9 @@ class Go2ConstraintPhase1RoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticRmaTrans'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 7000
+        max_iterations = 6000
         resume = False
         resume_path = ''
+        phase1_end = 4000
+
   

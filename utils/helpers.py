@@ -218,4 +218,22 @@ class PolicyExporterLSTM(torch.nn.Module):
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
 
+def phase_schedualer(max_iters,phase1_end,phase2_end,lerp_steps,max_imi_weight):
+    act_schedual = np.array([False]*max_iters)
+    imitation_schedual = np.array([0.0]*max_iters)
+    
+    act_schedual[phase2_end:] = True
+    step_by_value = float(max_imi_weight/lerp_steps)
+    imitation_schedual[phase1_end:phase1_end+lerp_steps] = np.arange(0,max_imi_weight,step_by_value)
+    imitation_schedual[phase1_end+lerp_steps:phase2_end] = max_imi_weight
+    imitation_schedual[phase2_end:phase2_end+lerp_steps] = np.arange(max_imi_weight,0,-step_by_value)
+    return act_schedual,imitation_schedual
+
+def hard_phase_schedualer(max_iters,phase1_end):
+    act_schedual = np.array([True]*max_iters)
+    imitation_schedual = np.array([True]*max_iters)
+
+    act_schedual[phase1_end:] = False
+    imitation_schedual[phase1_end:] = False
+    return act_schedual,imitation_schedual
 

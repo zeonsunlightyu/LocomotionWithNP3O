@@ -59,7 +59,34 @@ class LeggedRobot(BaseTask):
     #------------ enviorment core ----------------
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
+            isaac gym order:
+                0 FL_hip_joint
+                1 FL_thigh_joint
+                2 FL_calf_joint
+                3 FR_hip_joint
+                4 FR_thigh_joint
+                5 FR_calf_joint
+                6 RL_hip_joint
+                7 RL_thigh_joint
+                8 RL_calf_joint
+                9 RR_hip_joint
+                10 RR_thigh_joint
+                11 RR_calf_joint
+            unitree go2 sdk order:
+                3 FR_hip_joint
+                4 FR_thigh_joint
+                5 FR_calf_joint
+                0 FL_hip_joint
+                1 FL_thigh_joint
+                2 FL_calf_joint
+                9 RR_hip_joint
+                10 RR_thigh_joint
+                11 RR_calf_joint
+                6 RL_hip_joint
+                7 RL_thigh_joint
+                8 RL_calf_joint
         """
+  
         # get gym GPU state tensors
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
@@ -121,6 +148,7 @@ class LeggedRobot(BaseTask):
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_dofs):
             name = self.dof_names[i]
+            print(name)
             angle = self.cfg.init_state.default_joint_angles[name]
             self.default_dof_pos[i] = angle
             found = False
@@ -233,6 +261,9 @@ class LeggedRobot(BaseTask):
 
         if self.cfg.domain_rand.randomize_friction:
             self.friction_coeffs_tensor = self.friction_coeffs.to(self.device).to(torch.float).squeeze(-1)
+        else:
+            friction_coeffs_tensor = torch.ones(self.num_envs,1)*rigid_shape_props_asset[0].friction
+            self.friction_coeffs_tensor = friction_coeffs_tensor.to(self.device).to(torch.float)
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
@@ -297,6 +328,22 @@ class LeggedRobot(BaseTask):
                             self.dof_vel * self.obs_scales.dof_vel,
                             self.contact_filt.float()-0.5,
                             self.action_history_buf[:,-1]),dim=-1)
+        
+        noise_scales = self.cfg.noise.noise_scales
+        noise_level = self.cfg.noise.noise_level
+        noise_vec = torch.cat((torch.ones(3) * noise_scales.gravity * noise_level,
+                               torch.zeros(3),
+                               torch.ones(
+                                   12) * noise_scales.dof_pos * noise_level * self.obs_scales.dof_pos,
+                               torch.ones(
+                                   12) * noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel,
+                               #torch.ones(4) * noise_scales.contact_states * noise_level,
+                               torch.zeros(4),
+                               torch.zeros(self.num_actions),
+                               ), dim=0)
+        
+        if self.cfg.noise.add_noise:
+            obs_buf += (2 * torch.rand_like(obs_buf) - 1) * noise_vec.to(self.device)
 
         priv_latent = torch.cat((
             self.base_ang_vel  * self.obs_scales.ang_vel,
@@ -308,7 +355,7 @@ class LeggedRobot(BaseTask):
         
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
-            heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)*self.obs_scales.height_measurements
+            heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.4 - self.measured_heights, -1, 1.)*self.obs_scales.height_measurements
             self.obs_buf = torch.cat([obs_buf, heights, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
         else:
             self.obs_buf = torch.cat([obs_buf, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
@@ -337,11 +384,6 @@ class LeggedRobot(BaseTask):
             act_hist = self.action_history_buf.view(self.num_envs,-1)
             self.obs_buf = torch.cat([self.obs_buf,pure_obs_hist,act_hist], dim=-1)
     
-    def get_noisy_measurement(self, x, scale):
-        if self.cfg.noise.add_noise:
-            x = x + (2.0 * torch.rand_like(x) - 1) * scale * self.cfg.noise.noise_level
-        return x
-    
     #------------- Callbacks --------------
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -363,7 +405,7 @@ class LeggedRobot(BaseTask):
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
 
         #self.roll, self.pitch, self.yaw = euler_from_quaternion(self.base_quat)
-        contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
 
@@ -502,6 +544,7 @@ class LeggedRobot(BaseTask):
                 bucket_ids = torch.randint(0, num_buckets, (self.num_envs, 1))
                 friction_buckets = torch_rand_float(friction_range[0], friction_range[1], (num_buckets,1), device='cpu')
                 self.friction_coeffs = friction_buckets[bucket_ids]
+     
             for s in range(len(props)):
                 props[s].friction = self.friction_coeffs[env_id]
         return props

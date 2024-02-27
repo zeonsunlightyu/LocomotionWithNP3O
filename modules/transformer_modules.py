@@ -173,3 +173,94 @@ class ActionCausalTransformer(nn.Module):
         x = self.mlp_head(x[:,-1,:])
 
         return x
+    
+class ActionValueShareCausalTransformer(nn.Module):
+    def __init__(self, config) -> None:
+        super().__init__()
+        self.config = config
+        # action embedding
+        self.action_embedding = nn.Sequential(
+            nn.Linear(config.n_action, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_embd)
+        )
+        # obs embedding
+        self.obs_embedding = nn.Sequential(
+            nn.Linear(config.n_obs, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_embd)
+        )
+        # transformer 
+        self.transformer = nn.ModuleDict(dict(
+            wpe = nn.Embedding(config.block_size, config.n_embd),
+            drop = nn.Dropout(config.dropout),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+        ))
+        # mlp
+        self.action_head = nn.Sequential(
+            nn.Linear(config.n_embd, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_action)
+        )
+
+        self.value_head = nn.Sequential(
+            nn.Linear(config.n_embd + config.n_privs, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, 1)
+        )
+
+        self.cost_head = nn.Sequential(
+            nn.Linear(config.n_embd + config.n_privs, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_cost)
+        )
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    @staticmethod
+    def convert_action_obs_sequence(action_history,obs_history):
+        # permute to steps, num_envs, size
+        num_envs,steps,size = action_history.size()
+        # action t-4, action t-3, action t-2, action t-1
+        action_history = action_history.permute(1,0,2)
+        # obs t-3, obs t-2, obs t-1, obs t    
+        obs_history = obs_history.permute(1,0,2)
+        sequence = torch.stack((action_history,obs_history), dim=1).view(steps*2,num_envs,size)
+        # action t-4, obs_t-3, action t-3, obs t-2, action t-2, obs t-1, action t-1, obs t 
+        sequence = sequence.permute(1,0,2)
+        # first step of sequence should be zero,should remove it,obs_t-3, action t-3, obs t-2, action t-2, obs t-1, action t-1, obs t 
+        return sequence[:,1:,:]
+    
+    def forward(self, obs_history, action_history):
+
+        # get embedding 
+        obs_history_emb = self.obs_embedding(obs_history)
+        action_history_emb = self.action_embedding(action_history)
+        # transfrom embedding 
+        tok_emb = self.convert_action_obs_sequence(action_history_emb,obs_history_emb)
+   
+        device = tok_emb.device
+        n_envs,t,_ = tok_emb.size() 
+        assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+        pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
+        # add positional embedding
+        pos_emb = self.transformer.wpe(pos).unsqueeze(0)
+        pos_emb = pos_emb.repeat(n_envs,1,1)
+        # pass through transformer
+        x = self.transformer.drop(tok_emb + pos_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+        action = self.action_head(x[:,-1,:])
+        cost = self.cost_head(x[:,-1,:])
+        value = self.vaue_head(x[:,-1,:])
+        return action,cost,value

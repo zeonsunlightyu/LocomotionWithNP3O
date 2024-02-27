@@ -40,6 +40,8 @@ def play(args):
     env_cfg.domain_rand.randomize_base_mass = False
     env_cfg.domain_rand.randomize_motor = False
     env_cfg.domain_rand.randomize_lag_timesteps = False
+    env_cfg.noise.add_noise = False
+    env_cfg.domain_rand.randomize_friction = False
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
@@ -55,13 +57,13 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_1000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_5500.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
 
     # clear images under frames folder
-    frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
-    delete_files_in_directory(frames_path)
+    # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
+    # delete_files_in_directory(frames_path)
 
     # set rgba camera sensor for debug and doudle check
     camera_local_transform = gymapi.Transform()
@@ -97,7 +99,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 0.8
+        env.commands[:,0] = 0.6
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
@@ -106,9 +108,6 @@ def play(args):
         env.gym.step_graphics(env.sim) # required to render in headless mode
         env.gym.render_all_camera_sensors(env.sim)
         if RECORD_FRAMES:
-            frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
-            if not os.path.isdir(frames_path):
-                os.mkdir(frames_path)
             img = env.gym.get_camera_image(env.sim, env.envs[0], cam_handle, gymapi.IMAGE_COLOR).reshape((512,512,4))[:,:,:3]
             if video is None:
                 video = cv2.VideoWriter('record.mp4', cv2.VideoWriter_fourcc(*'MP4V'), int(1 / env.dt), (img.shape[1],img.shape[0]))

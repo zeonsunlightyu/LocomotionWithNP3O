@@ -37,8 +37,8 @@ class Go2ConstraintPhase2RoughCfg( LeggedRobotCfg ):
         n_scan = 132
         n_priv_latent = 4 + 1 + 12 + 12 + 6
         n_proprio = 46
-        history_len = 10
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent #+ history_len*12 + history_len*(n_proprio-12)
+        history_len = 5
+        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + history_len*12 + history_len*(n_proprio-12)
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
@@ -189,7 +189,7 @@ class Go2ConstraintPhase2RoughCfg( LeggedRobotCfg ):
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         measure_heights = True
-        include_act_obs_pair_buf = False
+        include_act_obs_pair_buf = True
 
 class Go2ConstraintPhase2RoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -221,10 +221,10 @@ class Go2ConstraintPhase2RoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_go2_constraint'
-        policy_class_name = 'ActorCriticRMA'
+        policy_class_name = 'ActorCriticRmaTrans'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 1000
+        max_iterations = 2000
         resume = True
-        resume_path = './model_7000.pt'
+        resume_path = './model_3000.pt'
   
