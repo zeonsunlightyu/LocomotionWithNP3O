@@ -12,6 +12,8 @@
 #include "gamepad.hpp"
 #include "cfg.hpp"
 
+using namesapce at::indexing;
+
 namespace fs = std::filesystem;
 
 namespace unitree::common
@@ -31,7 +33,7 @@ namespace unitree::common
 
         virtual std::vector<float> GetLog() = 0;
 
-        float dt, kp, kd;
+        float dt, kp, kd, action_scale;
         std::array<float, 12> init_pos;
         std::array<float, 12> jpos_des;
     };
@@ -54,6 +56,10 @@ namespace unitree::common
             dt = cfg.dt;
             kp = cfg.kp;
             kd = cfg.kd;
+            action_scale = cfg.action_scale;
+            command_scale = cfg.command_scale;
+            pos_scale = cfg.pos_scale;
+            vel_scale = cfg.vel_scale;
             history_length = cfg.history_length;
             model_path = cfg.model_path;
 
@@ -91,8 +97,8 @@ namespace unitree::common
         {
             // record command
             cmd.at(0) = gamepad.ly;
-            cmd.at(1) = -gamepad.lx;
-            cmd.at(2) = -gamepad.rx;
+            cmd.at(1) = 0;//-gamepad.lx;
+            cmd.at(2) = 0;//-gamepad.rx;
 
             // record robot state
             for (int i = 0; i < 12; ++i)
@@ -115,8 +121,17 @@ namespace unitree::common
             torch::Tensor cmd_tensor = torch::from_blob(cmd,{1,3},options).to(device_type);
             torch::Tensor dof_pos_tensor = torch::from_blob(jpos_processed,{1,12},options).to(device_type);
             torch::Tensor dof_vel_tensor = torch::from_blob(jvel_processed,{1,12},options).to(device_type);
-            // concat action
-
+            torch::Tensor contact_tensor = torch::from_blob(contact,{1,4},options).to(device_type);
+            // scale and offset
+            dof_pos_tensor = (dof_pos_tensor - init_pos_tensor)*pos_scale;
+            dof_vel_tensor = dof_vel_tensor*vel_scale;
+            cmd_tensor = cmd_tensor*command_scale;
+            contact_tensor = contact_tensor - 0.5;
+            // concat obs
+            torch::Tensor obs = torch::cat({gravity_tensor,cmd_tensor,dof_pos_tensor,dof_vel_tensor,contact_tensor},1)
+            // append obs to obs buffer
+            obs_buf = obs_buf.index({Slice(1,None),Slice()});
+            obs_buf = torch::cat({obs_buf,obs},0);
         }
 
         void Reset(RobotInterface &robot_interface, Gamepad &gamepad)
@@ -131,15 +146,20 @@ namespace unitree::common
             inputs.push_back(obs_buf);
             inputs.push_back(action_buf);
             // Execute the model and turn its output into a tensor.
-            torch::Tensor action = module->forward(inputs).toTensor();
-            // clip action
-            
+            torch::Tensor action_raw = module->forward(inputs).toTensor();
+            // interpolate action
+            action = last_action_tensor*0.2 + action_raw*0.8;
+            // record action raw
+            last_action_tensor = action_raw.clone()
+            // append to action buffer
+            action_buf = action_buf.index({Slice(1,None),Slice()});
+            action_buf = torch::cat({action_buf,action_raw},0)
+            // scale action
+            action = action * action_scale
             // action modified by default pos
             action = action + init_pos_tensor;
-            // save action
-            last_action = action.clone();
+            // assign to control
             auto action_getter = action.accessor<float,1>();
-            // assign for control
             for (int i = 0; i < 12; ++i)
             {
                 jpos_des.at(i) = action_getter[i];
