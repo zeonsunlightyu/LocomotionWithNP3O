@@ -109,15 +109,14 @@ namespace unitree::common
                 contact.at(i) = robot_interface.contact.at(i);
             }
 
-            // record into obs
-            // gravity,cmd,dof_pos,dof_vel,contact
-            // to tensor
+            // gravity,cmd,dof_pos,dof_vel to tensor
             auto options = torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA);
             torch::Tensor gravity_tensor = torch::from_blob(gravity,{1,3},options).to(device_type);
             torch::Tensor cmd_tensor = torch::from_blob(cmd,{1,3},options).to(device_type);
             torch::Tensor dof_pos_tensor = torch::from_blob(jpos_processed,{1,12},options).to(device_type);
             torch::Tensor dof_vel_tensor = torch::from_blob(jvel_processed,{1,12},options).to(device_type);
             // concat action
+
         }
 
         void Reset(RobotInterface &robot_interface, Gamepad &gamepad)
@@ -134,8 +133,8 @@ namespace unitree::common
             // Execute the model and turn its output into a tensor.
             torch::Tensor action = module->forward(inputs).toTensor();
             // clip action
-
-            // add to default
+            
+            // action modified by default pos
             action = action + init_pos_tensor;
             // save action
             last_action = action.clone();

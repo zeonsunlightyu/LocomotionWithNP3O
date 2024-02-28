@@ -30,7 +30,7 @@
 
 from configs.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class Go2ConstraintPhase2RoughCfg( LeggedRobotCfg ):
+class Go2ConstraintRoughCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
 
@@ -191,7 +191,7 @@ class Go2ConstraintPhase2RoughCfg( LeggedRobotCfg ):
         measure_heights = True
         include_act_obs_pair_buf = True
 
-class Go2ConstraintPhase2RoughCfgPPO( LeggedRobotCfgPPO ):
+class Go2ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 5.e-4
@@ -216,7 +216,7 @@ class Go2ConstraintPhase2RoughCfgPPO( LeggedRobotCfgPPO ):
         tanh_encoder_output = False
         num_costs = 11
 
-        teacher_act = False
+        teacher_act = True
       
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
@@ -224,7 +224,9 @@ class Go2ConstraintPhase2RoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticRmaTrans'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 2000
-        resume = True
-        resume_path = './model_3000.pt'
+        max_iterations = 6000
+        resume = False
+        resume_path = ''
+        phase1_end = 4000
+
   
