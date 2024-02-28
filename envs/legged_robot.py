@@ -60,31 +60,31 @@ class LeggedRobot(BaseTask):
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
             isaac gym order:
-                0 FL_hip_joint
-                1 FL_thigh_joint
-                2 FL_calf_joint
-                3 FR_hip_joint
-                4 FR_thigh_joint
-                5 FR_calf_joint
-                6 RL_hip_joint
-                7 RL_thigh_joint
-                8 RL_calf_joint
-                9 RR_hip_joint
-                10 RR_thigh_joint
-                11 RR_calf_joint
+                0 FL_hip_joint 3
+                1 FL_thigh_joint 4
+                2 FL_calf_joint 5
+                3 FR_hip_joint 0 
+                4 FR_thigh_joint 1
+                5 FR_calf_joint 2 
+                6 RL_hip_joint 9 
+                7 RL_thigh_joint 10
+                8 RL_calf_joint 11
+                9 RR_hip_joint 6 
+                10 RR_thigh_joint 7
+                11 RR_calf_joint 8
             unitree go2 sdk order:
-                3 FR_hip_joint
-                4 FR_thigh_joint
-                5 FR_calf_joint
-                0 FL_hip_joint
-                1 FL_thigh_joint
-                2 FL_calf_joint
-                9 RR_hip_joint
-                10 RR_thigh_joint
-                11 RR_calf_joint
-                6 RL_hip_joint
-                7 RL_thigh_joint
-                8 RL_calf_joint
+                3 FR_hip_joint 0
+                4 FR_thigh_joint 1
+                5 FR_calf_joint 2
+                0 FL_hip_joint 3
+                1 FL_thigh_joint 4
+                2 FL_calf_joint 5
+                9 RR_hip_joint 6
+                10 RR_thigh_joint 7
+                11 RR_calf_joint 8
+                6 RL_hip_joint 9
+                7 RL_thigh_joint 10
+                8 RL_calf_joint 11
         """
   
         # get gym GPU state tensors
@@ -277,22 +277,23 @@ class LeggedRobot(BaseTask):
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
 
+    def reindex(self,tensor):
+        #sim2real purpose
+        return tensor[:,[3,4,5,0,1,2,9,10,11,6,7,8]]
+    
+    def reindex_feet(self,tensor):
+        return tensor[:,[1,0,3,2]]
+
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
 
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
-        self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+        actions = self.reindex(actions)
+        actions = actions.to(self.device)
 
-        # if self.cfg.domain_rand.action_delay:
-        #     if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
-        #         if len(self.cfg.domain_rand.action_curr_step) != 0:
-        #             self.delay = torch.tensor(self.cfg.domain_rand.action_curr_step.pop(0), device=self.device, dtype=torch.float)
-        #     if self.viewer:
-        #         self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
-        #     indices = -self.delay - 1
-        #     actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
+        self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
 
         self.global_counter += 1   
         clip_actions = self.cfg.normalization.clip_actions
@@ -324,10 +325,10 @@ class LeggedRobot(BaseTask):
        
         obs_buf =torch.cat((self.projected_gravity,
                             self.commands[:, :3] * self.commands_scale,
-                            (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
-                            self.dof_vel * self.obs_scales.dof_vel,
-                            self.contact_filt.float()-0.5,
-                            self.action_history_buf[:,-1]),dim=-1)
+                            self.reindex((self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos),
+                            self.reindex(self.dof_vel * self.obs_scales.dof_vel),
+                            self.reindex_feet(self.contact_filt.float()-0.5),
+                            self.reindex(self.action_history_buf[:,-1])),dim=-1)
         
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
