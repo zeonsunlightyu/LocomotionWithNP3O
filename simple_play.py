@@ -42,6 +42,7 @@ def play(args):
     env_cfg.domain_rand.randomize_lag_timesteps = False
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
+    env_cfg.control.use_filter = True
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
@@ -57,9 +58,10 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_5500.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
+    policy.save_torch_jit_policy('model.pt',env.device)
 
     # clear images under frames folder
     # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
@@ -99,11 +101,12 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 0.6
+        env.commands[:,0] = 0
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
         actions,_ = policy.act_student(obs)
+
         obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
         env.gym.step_graphics(env.sim) # required to render in headless mode
         env.gym.render_all_camera_sensors(env.sim)
@@ -120,9 +123,8 @@ def play(args):
 
     video.release()
 if __name__ == '__main__':
-    task_registry.register("go2N3poPhase1",LeggedRobot,Go2ConstraintPhase1RoughCfg(),Go2ConstraintPhase1RoughCfgPPO())
-    task_registry.register("go2N3poPhase2",LeggedRobot,Go2ConstraintPhase2RoughCfg(),Go2ConstraintPhase2RoughCfgPPO())
-    
+    task_registry.register("go2N3po",LeggedRobot,Go2ConstraintRoughCfg(),Go2ConstraintRoughCfgPPO())
+    task_registry.register("go2N3poTrans",LeggedRobot,Go2ConstraintTransRoughCfg(),Go2ConstraintTransRoughCfgPPO())
     RECORD_FRAMES = True
     args = get_args()
     play(args)

@@ -5,7 +5,7 @@ from datetime import datetime
 import isaacgym
 from utils.helpers import get_args
 from envs import LeggedRobot
-from configs import Go2ConstraintRoughCfg,Go2ConstraintRoughCfgPPO
+from configs import Go2ConstraintRoughCfg,Go2ConstraintRoughCfgPPO,Go2ConstraintTransRoughCfg,Go2ConstraintTransRoughCfgPPO
 from utils.task_registry import task_registry
 
 def train(args):
@@ -15,6 +15,6 @@ def train(args):
 
 if __name__ == '__main__':
     task_registry.register("go2N3po",LeggedRobot,Go2ConstraintRoughCfg(),Go2ConstraintRoughCfgPPO())
-    
+    task_registry.register("go2N3poTrans",LeggedRobot,Go2ConstraintTransRoughCfg(),Go2ConstraintTransRoughCfgPPO())
     args = get_args()
     train(args)

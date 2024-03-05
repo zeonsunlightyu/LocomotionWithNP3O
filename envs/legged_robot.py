@@ -4,6 +4,7 @@ from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 import torch
 from typing import Dict
+import random
 
 # env related
 from envs.base_task import BaseTask
@@ -170,7 +171,7 @@ class LeggedRobot(BaseTask):
                                             self.cfg.depth.resized[1], 
                                             self.cfg.depth.resized[0]).to(self.device)
             
-        self.lag_buffer = [torch.zeros_like(self.dof_pos) for i in range(self.cfg.domain_rand.lag_timesteps+1)]
+        self.lag_buffer = torch.zeros(self.num_envs,self.cfg.domain_rand.lag_timesteps,self.num_actions,device=self.device,requires_grad=False)
 
     def _create_envs(self):
         """ Creates environments:
@@ -265,6 +266,19 @@ class LeggedRobot(BaseTask):
             friction_coeffs_tensor = torch.ones(self.num_envs,1)*rigid_shape_props_asset[0].friction
             self.friction_coeffs_tensor = friction_coeffs_tensor.to(self.device).to(torch.float)
 
+        if self.cfg.domain_rand.randomize_lag_timesteps:
+            self.num_envs_indexes = list(range(0,self.num_envs))
+            self.randomized_lag = [random.randint(0,self.cfg.domain_rand.lag_timesteps-1) for i in range(self.num_envs)]
+            self.randomized_lag_tensor = torch.FloatTensor(self.randomized_lag).view(-1,1)/(self.cfg.domain_rand.lag_timesteps-1)
+            self.randomized_lag_tensor = self.randomized_lag_tensor.to(self.device)
+            self.randomized_lag_tensor.requires_grad_ = False
+        else:
+            self.num_envs_indexes = list(range(0,self.num_envs))
+            self.randomized_lag = [self.cfg.domain_rand.lag_timesteps-1 for i in range(self.num_envs)]
+            self.randomized_lag_tensor = torch.FloatTensor(self.randomized_lag).view(-1,1)/(self.cfg.domain_rand.lag_timesteps-1)
+            self.randomized_lag_tensor = self.randomized_lag_tensor.to(self.device)
+            self.randomized_lag_tensor.requires_grad_ = False
+
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
             self.feet_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], feet_names[i])
@@ -347,6 +361,7 @@ class LeggedRobot(BaseTask):
             obs_buf += (2 * torch.rand_like(obs_buf) - 1) * noise_vec.to(self.device)
 
         priv_latent = torch.cat((
+            self.randomized_lag_tensor,
             self.base_ang_vel  * self.obs_scales.ang_vel,
             self.base_lin_vel * self.obs_scales.lin_vel,
             self.mass_params_tensor,
@@ -619,11 +634,19 @@ class LeggedRobot(BaseTask):
         actions_scaled = actions[:, :12] * self.cfg.control.action_scale
         actions_scaled[:, [0, 3, 6, 9]] *= self.cfg.control.hip_scale_reduction
 
+        # if self.cfg.domain_rand.randomize_lag_timesteps:
+        #     self.lag_buffer = self.lag_buffer[1:] + [actions_scaled.clone()]
+        #     joint_pos_target = self.lag_buffer[0] + self.default_dof_pos
+        # else:
+        #     joint_pos_target = actions_scaled + self.default_dof_pos
+
         if self.cfg.domain_rand.randomize_lag_timesteps:
-            self.lag_buffer = self.lag_buffer[1:] + [actions_scaled.clone()]
-            joint_pos_target = self.lag_buffer[0] + self.default_dof_pos
+            self.lag_buffer = torch.cat([self.lag_buffer[:,1:,:].clone(),actions_scaled.unsqueeze(1).clone()],dim=1)
+            joint_pos_target = self.lag_buffer[self.num_envs_indexes,self.randomized_lag,:] + self.default_dof_pos
         else:
             joint_pos_target = actions_scaled + self.default_dof_pos
+
+        # joint_pos_target = torch.clamp(joint_pos_target,self.dof_pos-1,self.dof_pos+1)
 
         control_type = self.cfg.control.control_type
         if control_type=="P":
@@ -728,8 +751,9 @@ class LeggedRobot(BaseTask):
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
 
-        for i in range(len(self.lag_buffer)):
-            self.lag_buffer[i][env_ids, :] = 0
+        # for i in range(len(self.lag_buffer)):
+        #     self.lag_buffer[i][env_ids, :] = 0
+        self.lag_buffer[env_ids,:,:] = 0
     
     def reset(self):
         """ Reset all robots"""

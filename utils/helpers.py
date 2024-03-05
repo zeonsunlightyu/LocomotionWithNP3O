@@ -232,8 +232,10 @@ def phase_schedualer(max_iters,phase1_end,phase2_end,lerp_steps,max_imi_weight):
 def hard_phase_schedualer(max_iters,phase1_end):
     act_schedual = np.array([True]*max_iters)
     imitation_schedual = np.array([True]*max_iters)
+    lag_schedual = np.array([False]*max_iters)
 
     act_schedual[phase1_end:] = False
     imitation_schedual[phase1_end:] = False
-    return act_schedual,imitation_schedual
+    lag_schedual[phase1_end:] = True
+    return act_schedual,imitation_schedual,lag_schedual
 

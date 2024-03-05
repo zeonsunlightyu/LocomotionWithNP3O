@@ -112,15 +112,22 @@ class OnConstraintPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
-        self.act_shed,self.imi_shed = hard_phase_schedualer(max_iters=tot_iter,
+        self.act_shed,self.imi_shed,self.lag_shed = hard_phase_schedualer(max_iters=tot_iter,
                     phase1_end=self.phase1_end)
 
      
         for it in range(self.current_learning_iteration, tot_iter):
             act_teacher_flag = self.act_shed[it]
             imi_flag = self.imi_shed[it]
+            lag_flag = self.lag_shed[it]
+
             self.alg.set_imi_flag(imi_flag)
             self.alg.actor_critic.set_teacher_act(act_teacher_flag)
+            # self.env.randomize_lag_timesteps = lag_flag
+            # if self.env.randomize_lag_timesteps:
+            #     print("lag is on")
+            # else:
+            #     print("lag is off")
             
             start = time.time()
             # Rollout

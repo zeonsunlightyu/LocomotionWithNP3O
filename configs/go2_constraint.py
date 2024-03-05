@@ -35,10 +35,10 @@ class Go2ConstraintRoughCfg( LeggedRobotCfg ):
         num_envs = 4096
 
         n_scan = 132
-        n_priv_latent = 4 + 1 + 12 + 12 + 6
+        n_priv_latent = 4 + 1 + 12 + 12 + 6 + 1
         n_proprio = 46
-        history_len = 5
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + history_len*12 + history_len*(n_proprio-12)
+        history_len = 10
+        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent #+ history_len*12 + history_len*(n_proprio-12)
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
@@ -130,7 +130,7 @@ class Go2ConstraintRoughCfg( LeggedRobotCfg ):
         randomize_motor = True
         motor_strength_range = [0.9, 1.1]
 
-        randomize_lag_timesteps = False
+        randomize_lag_timesteps = True
         lag_timesteps = 6
     
     class depth( LeggedRobotCfg.depth):
@@ -189,7 +189,7 @@ class Go2ConstraintRoughCfg( LeggedRobotCfg ):
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         measure_heights = True
-        include_act_obs_pair_buf = True
+        include_act_obs_pair_buf = False
 
 class Go2ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -221,7 +221,7 @@ class Go2ConstraintRoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_go2_constraint'
-        policy_class_name = 'ActorCriticRmaTrans'
+        policy_class_name = 'ActorCriticRMA'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
         max_iterations = 6000
