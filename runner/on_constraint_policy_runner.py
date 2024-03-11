@@ -30,7 +30,7 @@ class OnConstraintPolicyRunner:
         self.device = device
         self.env = env
 
-        self.phase1_end = self.cfg["phase1_end"] 
+        # self.phase1_end = self.cfg["phase1_end"] 
  
         actor_critic_class = eval(self.cfg["policy_class_name"])  # ActorCritic
         actor_critic: ActorCriticRMA = actor_critic_class(self.env.cfg.env.n_proprio,
@@ -112,22 +112,27 @@ class OnConstraintPolicyRunner:
         cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
 
         tot_iter = self.current_learning_iteration + num_learning_iterations
-        self.act_shed,self.imi_shed,self.lag_shed = hard_phase_schedualer(max_iters=tot_iter,
-                    phase1_end=self.phase1_end)
+        # self.act_shed,self.imi_shed,self.lag_shed = hard_phase_schedualer(max_iters=tot_iter,
+        #             phase1_end=self.phase1_end)
 
      
         for it in range(self.current_learning_iteration, tot_iter):
-            act_teacher_flag = self.act_shed[it]
-            imi_flag = self.imi_shed[it]
-            lag_flag = self.lag_shed[it]
+            # act_teacher_flag = self.act_shed[it]
+            # imi_flag = self.imi_shed[it]
+            # lag_flag = self.lag_shed[it]
 
-            self.alg.set_imi_flag(imi_flag)
-            self.alg.actor_critic.set_teacher_act(act_teacher_flag)
-            # self.env.randomize_lag_timesteps = lag_flag
-            # if self.env.randomize_lag_timesteps:
-            #     print("lag is on")
-            # else:
-            #     print("lag is off")
+            # self.alg.set_imi_flag(imi_flag)
+            # self.alg.actor_critic.set_teacher_act(act_teacher_flag)
+            # # self.env.randomize_lag_timesteps = lag_flag
+            # # if self.env.randomize_lag_timesteps:
+            # #     print("lag is on")
+            # # else:
+            # #     print("lag is off")
+            if self.alg.actor_critic.imi_flag and self.cfg['resume']: 
+                step_size = 1/int(tot_iter/2)
+                imi_weight = max(0,1 - it * step_size)
+                print("imi_weight:",imi_weight)
+                self.alg.set_imi_weight(imi_weight)
             
             start = time.time()
             # Rollout

@@ -46,17 +46,18 @@ class NP3O:
         self.actor_critic.to(self.device)
         self.storage = None # initialized later
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
-        #self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters()) + list(self.actor_critic.history_encoder.parameters())
-        # if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.teacher_act:
-        #     self.imi_flag = True
-        #     print('running with imi loss on')
-        # else:
-        #     self.imi_flag = False
-        #     print('running with imi loss off')
-        self.imi_flag = False
 
-        self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters())
-        self.imitation_optimizer = optim.Adam(self.imitation_params_list, lr=learning_rate)
+        if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.imi_flag:
+            self.imi_flag = True
+            print('running with imi loss on')
+        else:
+            self.imi_flag = False
+            print('running with imi loss off')
+
+        self.imi_weight = 1
+
+        # self.imitation_params_list = list(self.actor_critic.actor_student_backbone.parameters())
+        # self.imitation_optimizer = optim.Adam(self.imitation_params_list, lr=3e-4)
         self.transition = RolloutStorageWithCost.Transition()
 
         # PPO parameters
@@ -90,6 +91,9 @@ class NP3O:
             print("runing with imitation")
         else:
             print("runing without imitation")
+    
+    def set_imi_weight(self,value):
+        self.imi_weight = value
 
     def act(self, obs, critic_obs, info):
         if self.actor_critic.is_recurrent:
@@ -238,7 +242,11 @@ class NP3O:
                 combine_value_loss = self.cost_value_loss_coef * cost_value_loss + self.value_loss_coef * value_loss
                 entropy_loss = - self.entropy_coef * entropy_batch.mean()
 
-                loss = main_loss + combine_value_loss + entropy_loss 
+                if self.imi_flag:
+                    imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
+                    loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss
+                else:
+                    loss = main_loss + combine_value_loss + entropy_loss
 
                 # Gradient step
                 self.optimizer.zero_grad()
@@ -250,19 +258,23 @@ class NP3O:
                 mean_cost_value_loss += cost_value_loss.item()
                 mean_viol_loss += viol_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
-
                 if self.imi_flag:
-                    # imitation module gradient step
-                    for epoch in range(self.substeps):
-                        imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-                        self.imitation_optimizer.zero_grad()
-                        imitation_loss.backward()
-                        nn.utils.clip_grad_norm_(self.imitation_params_list, self.max_grad_norm)
-                        self.imitation_optimizer.step()
-
-                        mean_imitation_loss += imitation_loss.item()
+                    mean_imitation_loss += imitation_loss.item()
                 else:
                     mean_imitation_loss += 0
+
+                # if self.imi_flag:
+                #     # imitation module gradient step
+                #     for epoch in range(self.substeps):
+                #         imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
+                #         self.imitation_optimizer.zero_grad()
+                #         imitation_loss.backward()
+                #         nn.utils.clip_grad_norm_(self.imitation_params_list, self.max_grad_norm)
+                #         self.imitation_optimizer.step()
+
+                #         mean_imitation_loss += imitation_loss.item()
+                # else:
+                #     mean_imitation_loss += 0
 
 
         num_updates = self.num_learning_epochs * self.num_mini_batches

@@ -181,12 +181,12 @@ class ActorCriticRMA(nn.Module):
 
 class Config:
     def __init__(self):
-        self.n_obs = 34
+        self.n_obs = 30
         self.block_size = 9
         self.n_action = 12
         self.n_layer: int = 4
         self.n_head: int = 4
-        self.n_embd: int = 32
+        self.n_embd: int = 64
         self.dropout: float = 0.0
         self.bias: bool = True
 
@@ -233,6 +233,12 @@ class ActorCriticRmaTrans(nn.Module):
             print("ppo with teacher actor")
         else:
             print("ppo with student actor")
+
+        self.imi_flag = kwargs['imi_flag']
+        if self.imi_flag:
+            print("run imitation")
+        else:
+            print("no imitation")
         
         
         if len(priv_encoder_dims) > 0:

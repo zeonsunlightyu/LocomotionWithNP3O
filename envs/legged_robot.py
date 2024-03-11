@@ -304,10 +304,12 @@ class LeggedRobot(BaseTask):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
+        self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+
         actions = self.reindex(actions)
         actions = actions.to(self.device)
 
-        self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+        # self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
 
         self.global_counter += 1   
         clip_actions = self.cfg.normalization.clip_actions
@@ -341,8 +343,9 @@ class LeggedRobot(BaseTask):
                             self.commands[:, :3] * self.commands_scale,
                             self.reindex((self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos),
                             self.reindex(self.dof_vel * self.obs_scales.dof_vel),
-                            self.reindex_feet(self.contact_filt.float()-0.5),
-                            self.reindex(self.action_history_buf[:,-1])),dim=-1)
+                            #self.reindex_feet(self.contact_filt.float()-0.5),
+                            # self.reindex(self.action_history_buf[:,-1])),dim=-1)
+                            self.action_history_buf[:,-1]),dim=-1)
         
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
@@ -353,7 +356,7 @@ class LeggedRobot(BaseTask):
                                torch.ones(
                                    12) * noise_scales.dof_vel * noise_level * self.obs_scales.dof_vel,
                                #torch.ones(4) * noise_scales.contact_states * noise_level,
-                               torch.zeros(4),
+                               #torch.zeros(4),
                                torch.zeros(self.num_actions),
                                ), dim=0)
         
@@ -361,6 +364,7 @@ class LeggedRobot(BaseTask):
             obs_buf += (2 * torch.rand_like(obs_buf) - 1) * noise_vec.to(self.device)
 
         priv_latent = torch.cat((
+            self.reindex_feet(self.contact_filt.float()-0.5),
             self.randomized_lag_tensor,
             self.base_ang_vel  * self.obs_scales.ang_vel,
             self.base_lin_vel * self.obs_scales.lin_vel,
