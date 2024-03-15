@@ -1274,6 +1274,14 @@ class LeggedRobot(BaseTask):
         contact_filt = torch.logical_or(contact, self.last_contacts) 
         return 1.*(torch.sum(1.*contact_filt,dim=-1) < 3.)
     
+    def _cost_stand_still(self):
+        # Penalize motion at zero commands
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+    
+    def _cost_hip_pos(self):
+        return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - self.default_dof_pos[:, [0, 3, 6, 9]]), dim=1)
+
+    
     
     
     

@@ -115,7 +115,7 @@ class Go2ConstraintTransRoughPhase2Cfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.42
+        base_height_target = 0.3
         class scales( LeggedRobotCfg.rewards.scales ):
             # torques = -0.0001
             # termination = 0.0
@@ -133,7 +133,7 @@ class Go2ConstraintTransRoughPhase2Cfg( LeggedRobotCfg ):
             # action_rate = 0.0
             # stand_still = 0.0
 
-            torques = 0
+            torques = -0.0002
             termination = 0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
@@ -143,10 +143,10 @@ class Go2ConstraintTransRoughPhase2Cfg( LeggedRobotCfg ):
             dof_vel = 0.0
             dof_acc = 0.0
             base_height = 0.0
-            feet_air_time = 0.0
+            feet_air_time = 1.0
             collision = 0.0
             feet_stumble = 0.0
-            action_rate = 0.0
+            action_rate = -0.01
             stand_still = 0.0
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -198,10 +198,12 @@ class Go2ConstraintTransRoughPhase2Cfg( LeggedRobotCfg ):
             acc_smoothness = 1
             collision = 0.1
             # feet_contact_forces = 0.1
-            feet_air_time = 1
-            torques= 1
-            action_rate= 1
+            #feet_air_time = 1
+            #torques= 1
+            #action_rate= 1
             base_height=1
+            stand_still=1
+            hip_pos=1
  
         class d_values:
             pos_limit = 0.0
@@ -211,13 +213,16 @@ class Go2ConstraintTransRoughPhase2Cfg( LeggedRobotCfg ):
             acc_smoothness = 0.0
             collision = 0.0
             # feet_contact_forces = 0.0
-            feet_air_time = 0.06
-            torques = 0.025
-            action_rate=0.07
+            #feet_air_time = 0.06
+            #torques = 0.025
+            #action_rate=0.07
             base_height=0.0
+            stand_still=0.0
+            hip_pos=0.0
     
+
     class cost:
-        num_costs = 10
+        num_costs = 9
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -248,7 +253,7 @@ class Go2ConstraintTransRoughPhase2CfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 10
+        num_costs = 9
 
         teacher_act = False
         imi_flag = True
@@ -261,7 +266,7 @@ class Go2ConstraintTransRoughPhase2CfgPPO( LeggedRobotCfgPPO ):
         algorithm_class_name = 'NP3O'
         max_iterations = 4000
         resume = True
-        resume_path = 'model_3000.pt'
+        resume_path = 'model_4000.pt'
         
         
 

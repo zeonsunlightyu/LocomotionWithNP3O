@@ -186,7 +186,7 @@ class Config:
         self.n_action = 12
         self.n_layer: int = 4
         self.n_head: int = 4
-        self.n_embd: int = 64
+        self.n_embd: int = 32
         self.dropout: float = 0.0
         self.bias: bool = True
 
