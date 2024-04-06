@@ -33,7 +33,7 @@ def play(args):
     env_cfg.terrain.num_cols = 5
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
-    # env_cfg.terrain.mesh_type = 'plane'
+    #env_cfg.terrain.mesh_type = 'plane'
     env_cfg.domain_rand.push_robots = False
     #env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_base_com = False
@@ -42,6 +42,7 @@ def play(args):
     env_cfg.domain_rand.randomize_lag_timesteps = False
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
+    env_cfg.domain_rand.randomize_restitution = False
     env_cfg.control.use_filter = False
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -58,7 +59,8 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
+    #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000_no_speed.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
     policy.save_torch_jit_policy('model.pt',env.device)
@@ -101,11 +103,12 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 0.5
+        env.commands[:,0] = 1
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
-        actions,_ = policy.act_student(obs)
+        actions = policy.act_teacher(obs)
+        # actions = torch.clamp(actions,-1.2,1.2)
 
         obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
         env.gym.step_graphics(env.sim) # required to render in headless mode
@@ -126,6 +129,9 @@ if __name__ == '__main__':
     task_registry.register("go2N3po",LeggedRobot,Go2ConstraintRoughCfg(),Go2ConstraintRoughCfgPPO())
     task_registry.register("go2N3poTransPhase1",LeggedRobot,Go2ConstraintTransRoughPhase1Cfg(),Go2ConstraintTransRoughPhase1CfgPPO())
     task_registry.register("go2N3poTransPhase2",LeggedRobot,Go2ConstraintTransRoughPhase2Cfg(),Go2ConstraintTransRoughPhase2CfgPPO())
+    task_registry.register("go2N3poCnnPhase1",LeggedRobot,Go2ConstraintCnnRoughPhase1Cfg(),Go2ConstraintCnnRoughPhase1CfgPPO())
+    task_registry.register("go2N3poCnnPhase2",LeggedRobot,Go2ConstraintCnnRoughPhase2Cfg(),Go2ConstraintCnnRoughPhase2CfgPPO())
+    task_registry.register("go2N3poRnn",LeggedRobot,Go2ConstraintRnnRoughCfg(),Go2ConstraintRnnRoughCfgPPO())
     RECORD_FRAMES = True
     args = get_args()
     play(args)

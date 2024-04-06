@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/fish/rl_ws/src/cmake-build-debug/devel/setup.sh

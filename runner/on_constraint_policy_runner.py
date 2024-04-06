@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 from global_config import ROOT_DIR
 
-from modules import ActorCriticRMA,ActorCriticRmaTrans
+from modules import ActorCriticRMA,ActorCriticRmaTrans,ActorCriticSF,ActorCriticBarlowTwins
 from algorithm import NP3O
 from envs.vec_env import VecEnv
 from modules.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
@@ -115,7 +115,10 @@ class OnConstraintPolicyRunner:
         # self.act_shed,self.imi_shed,self.lag_shed = hard_phase_schedualer(max_iters=tot_iter,
         #             phase1_end=self.phase1_end)
 
-     
+        #imitation_mode
+        if self.alg.actor_critic.imi_flag and self.cfg['resume']: 
+            self.alg.actor_critic.imitation_mode()
+            
         for it in range(self.current_learning_iteration, tot_iter):
             # act_teacher_flag = self.act_shed[it]
             # imi_flag = self.imi_shed[it]

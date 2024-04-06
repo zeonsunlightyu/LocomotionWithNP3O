@@ -37,7 +37,87 @@ def mlp_factory(activation, input_dims, out_dims, hidden_dims,last_act=False):
         layers.append(activation)
 
     return layers
+
+class RnnStateHistoryEncoder(nn.Module):
+    def __init__(self,activation_fn, input_size, encoder_dims,hidden_size,output_size):
+        super(RnnStateHistoryEncoder,self).__init__()
+        self.activation_fn = activation_fn
+        self.encoder_dims = encoder_dims
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+
+        self.encoder = nn.Sequential(*mlp_factory(activation=activation_fn,
+                                   input_dims=input_size,
+                                   hidden_dims=encoder_dims,
+                                   out_dims=output_size))
+        
+        self.rnn = nn.GRU(input_size=output_size,
+                           hidden_size=hidden_size,
+                           batch_first=True)
+        
+    def forward(self,obs):
+        obs = self.encoder(obs)
+        out, h_n = self.rnn(obs)
+        return out
     
+class RnnBarlowTwinsStateHistoryEncoder(nn.Module):
+    def __init__(self,activation_fn, input_size, encoder_dims,hidden_size,output_size,final_output_size):
+        super(RnnBarlowTwinsStateHistoryEncoder,self).__init__()
+        self.activation_fn = activation_fn
+        self.encoder_dims = encoder_dims
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+
+        self.encoder = nn.Sequential(*mlp_factory(activation=activation_fn,
+                                   input_dims=input_size,
+                                   hidden_dims=encoder_dims,
+                                   out_dims=output_size))
+        
+        self.rnn = nn.GRU(input_size=output_size,
+                           hidden_size=hidden_size,
+                           batch_first=True)
+        
+        self.layer_norm = nn.LayerNorm(output_size)
+        
+        self.final_layer = nn.Linear(hidden_size,final_output_size)
+        
+    def forward(self,obs):
+        obs = self.encoder(obs)
+        out, h_n = self.rnn(obs)
+        latent = self.final_layer(out[:,-1,:])
+        return latent
+    
+class AutoEncoder(nn.Module):
+    def __init__(self,activation_fn, input_size, encoder_dims,latent_dim,decoder_dims,output_size):
+        super(AutoEncoder,self).__init__()
+        self.activation_fn = activation_fn
+        self.encoder_dims = encoder_dims
+        self.decoder_dims = decoder_dims
+        self.input_size = input_size
+        self.output_size = output_size
+        self.latent_dim = latent_dim
+
+        self.encoder = nn.Sequential(*mlp_factory(activation=activation_fn,
+                                   input_dims=input_size,
+                                   hidden_dims=encoder_dims,
+                                   out_dims=latent_dim))
+        
+        self.decoder = nn.Sequential(*mlp_factory(activation=activation_fn,
+                                   input_dims=latent_dim,
+                                   hidden_dims=decoder_dims,
+                                   out_dims=output_size))
+        
+    def forward(self,obs):
+        return self.encode(obs)
+
+    def encode(self,obs):
+        latent = self.encoder(obs)
+        return latent
+
+    def decode(self,latent):
+        out = self.decoder(latent)
+        return out
+
 class StateHistoryEncoder(nn.Module):
     def __init__(self, activation_fn, input_size, tsteps, output_size, tanh_encoder_output=False):
         # self.device = device

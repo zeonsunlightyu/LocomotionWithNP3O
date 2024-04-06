@@ -1,0 +1,159 @@
+/home/fish/clion-2023.3.4/bin/cmake/linux/x64/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" -S /home/fish/rl_ws/src -B /home/fish/rl_ws/src/cmake-build-debug
+CMake Deprecation Warning:
+  Support for "Extra Generators" like
+
+    CodeBlocks
+
+  is deprecated and will be removed from a future version of CMake.  IDEs may
+  use the cmake-file-api(7) to view CMake-generated project build trees.
+
+
+CMake Deprecation Warning at CMakeLists.txt:4 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+-- The C compiler identification is GNU 9.4.0
+-- The CXX compiler identification is GNU 9.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Using CATKIN_DEVEL_PREFIX: /home/fish/rl_ws/src/cmake-build-debug/devel
+-- Using CMAKE_PREFIX_PATH: /opt/ros/noetic
+-- This workspace overlays: /opt/ros/noetic
+CMake Warning (dev) at /opt/ros/noetic/share/catkin/cmake/python.cmake:4 (find_package):
+  Policy CMP0148 is not set: The FindPythonInterp and FindPythonLibs modules
+  are removed.  Run "cmake --help-policy CMP0148" for policy details.  Use
+  the cmake_policy command to set the policy and suppress this warning.
+
+Call Stack (most recent call first):
+  /opt/ros/noetic/share/catkin/cmake/all.cmake:164 (include)
+  /opt/ros/noetic/share/catkin/cmake/catkinConfig.cmake:20 (include)
+  CMakeLists.txt:58 (find_package)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found PythonInterp: /home/fish/anaconda3/bin/python3 (found suitable version "3.11.5", minimum required is "3") 
+-- Using PYTHON_EXECUTABLE: /home/fish/anaconda3/bin/python3
+-- Using Debian Python package layout
+-- Found PY_em: /home/fish/anaconda3/lib/python3.11/site-packages/em.py  
+-- Using empy: /home/fish/anaconda3/lib/python3.11/site-packages/em.py
+-- Using CATKIN_ENABLE_TESTING: ON
+-- Call enable_testing()
+-- Using CATKIN_TEST_RESULTS_DIR: /home/fish/rl_ws/src/cmake-build-debug/test_results
+-- Forcing gtest/gmock from source, though one was otherwise available.
+-- Found gtest sources under '/usr/src/googletest': gtests will be built
+-- Found gmock sources under '/usr/src/googletest': gmock will be built
+CMake Deprecation Warning at /usr/src/googletest/CMakeLists.txt:4 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+CMake Deprecation Warning at /usr/src/googletest/googlemock/CMakeLists.txt:45 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+CMake Deprecation Warning at /usr/src/googletest/googletest/CMakeLists.txt:56 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+CMake Warning (dev) at /usr/src/googletest/googletest/cmake/internal_utils.cmake:249 (find_package):
+  Policy CMP0148 is not set: The FindPythonInterp and FindPythonLibs modules
+  are removed.  Run "cmake --help-policy CMP0148" for policy details.  Use
+  the cmake_policy command to set the policy and suppress this warning.
+
+Call Stack (most recent call first):
+  /usr/src/googletest/googletest/CMakeLists.txt:91 (include)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+-- Found PythonInterp: /home/fish/anaconda3/bin/python3 (found version "3.11.5") 
+-- Found Threads: TRUE  
+-- Using Python nosetests: /usr/bin/nosetests3
+-- catkin 0.8.10
+-- BUILD_SHARED_LIBS is on
+-- BUILD_SHARED_LIBS is on
+/opt/ros/noetic/share/catkin/cmake/em/order_packages.cmake.em:23: error: <class 'RuntimeError'>: ImportError: "from catkin_pkg.topological_order import topological_order" failed: cannot import name 'Sequence' from 'collections' (/home/fish/anaconda3/lib/python3.11/collections/__init__.py)
+Make sure that you have installed "catkin_pkg", it is up to date and on the PYTHONPATH.
+Traceback (most recent call last):
+  File "<string>", line 8, in <module>
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/catkin_pkg/topological_order.py", line 39, in <module>
+    from .packages import find_packages
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/catkin_pkg/packages.py", line 38, in <module>
+    from .package import _get_package_xml
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/catkin_pkg/package.py", line 44, in <module>
+    from catkin_pkg.condition import evaluate_condition
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/catkin_pkg/condition.py", line 17, in <module>
+    import pyparsing as pp
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/pyparsing/__init__.py", line 140, in <module>
+    from .core import __diag__, __compat__
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/pyparsing/core.py", line 31, in <module>
+    from pathlib import Path
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/pathlib.py", line 10, in <module>
+    from collections import Sequence
+ImportError: cannot import name 'Sequence' from 'collections' (/home/fish/anaconda3/lib/python3.11/collections/__init__.py)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 3303, in <module>
+    if __name__ == '__main__': main()
+                               ^^^^^^
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 3301, in main
+    invoke(sys.argv[1:])
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 3284, in invoke
+    interpreter.wrap(interpreter.file, (file, name))
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2295, in wrap
+    self.fail(e)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2284, in wrap
+    callable(*args)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2359, in file
+    self.safe(scanner, done, locals)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2401, in safe
+    self.parse(scanner, locals)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2421, in parse
+    token.run(self, locals)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 1425, in run
+    interpreter.execute(self.code, locals)
+  File "/home/fish/anaconda3/lib/python3.11/site-packages/em.py", line 2596, in execute
+    _exec(statements, self.globals, locals)
+  File "<string>", line 10, in <module>
+RuntimeError: ImportError: "from catkin_pkg.topological_order import topological_order" failed: cannot import name 'Sequence' from 'collections' (/home/fish/anaconda3/lib/python3.11/collections/__init__.py)
+Make sure that you have installed "catkin_pkg", it is up to date and on the PYTHONPATH.
+CMake Error at /opt/ros/noetic/share/catkin/cmake/safe_execute_process.cmake:11 (message):
+  
+  execute_process(/home/fish/rl_ws/src/cmake-build-debug/catkin_generated/env_cached.sh
+  "/home/fish/anaconda3/bin/python3"
+  "/home/fish/anaconda3/lib/python3.11/site-packages/em.py" "--raw-errors"
+  "-F"
+  "/home/fish/rl_ws/src/cmake-build-debug/catkin_generated/order_packages.py"
+  "-o"
+  "/home/fish/rl_ws/src/cmake-build-debug/catkin_generated/order_packages.cmake"
+  "/opt/ros/noetic/share/catkin/cmake/em/order_packages.cmake.em") returned
+  error code 1
+Call Stack (most recent call first):
+  /opt/ros/noetic/share/catkin/cmake/em_expand.cmake:25 (safe_execute_process)
+  /opt/ros/noetic/share/catkin/cmake/catkin_workspace.cmake:35 (em_expand)
+  CMakeLists.txt:69 (catkin_workspace)
+
+
+-- Configuring incomplete, errors occurred!

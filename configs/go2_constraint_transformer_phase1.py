@@ -41,7 +41,7 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + history_len*12 + history_len*(n_proprio-12)
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.42] # x,y,z [m]
+        pos = [0.0, 0.0, 0.30] # x,y,z [m]
         """
           unitree go2 sdk order:
                -0.1 <-3 FR_hip_joint 0 -> 0.0
@@ -57,39 +57,39 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
                1 <- 7 RL_thigh_joint 10 -> 0.9
                -1.5 <- 8 RL_calf_joint 11 -> -1.8
         """
-        # default_joint_angles = { # = target angles [rad] when action = 0.0
-        #     'FL_hip_joint': 0.1,   # [rad]
-        #     'RL_hip_joint': 0.1,   # [rad]
-        #     'FR_hip_joint': -0.1 ,  # [rad]
-        #     'RR_hip_joint': -0.1,   # [rad]
-
-        #     'FL_thigh_joint': 0.8,     # [rad]
-        #     'RL_thigh_joint': 1.,   # [rad]
-        #     'FR_thigh_joint': 0.8,     # [rad]
-        #     'RR_thigh_joint': 1.,   # [rad]
-
-        #     'FL_calf_joint': -1.5,   # [rad]
-        #     'RL_calf_joint': -1.5,    # [rad]
-        #     'FR_calf_joint': -1.5,  # [rad]
-        #     'RR_calf_joint': -1.5,    # [rad]
-        # }
-
         default_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.0,   # [rad]
-            'RL_hip_joint': 0.0,   # [rad]
-            'FR_hip_joint': 0.0 ,  # [rad]
-            'RR_hip_joint': 0.0,   # [rad]
+            'FL_hip_joint': 0.1,   # [rad]
+            'RL_hip_joint': 0.1,   # [rad]
+            'FR_hip_joint': -0.1 ,  # [rad]
+            'RR_hip_joint': -0.1,   # [rad]
 
-            'FL_thigh_joint': 0.9,     # [rad]
-            'RL_thigh_joint': 0.9,   # [rad]
-            'FR_thigh_joint': 0.9,     # [rad]
-            'RR_thigh_joint': 0.9,   # [rad]
+            'FL_thigh_joint': 0.8,     # [rad]
+            'RL_thigh_joint': 1.,   # [rad]
+            'FR_thigh_joint': 0.8,     # [rad]
+            'RR_thigh_joint': 1.,   # [rad]
 
-            'FL_calf_joint': -1.8,   # [rad]
-            'RL_calf_joint': -1.8,    # [rad]
-            'FR_calf_joint': -1.8,  # [rad]
-            'RR_calf_joint': -1.8,    # [rad]
+            'FL_calf_joint': -1.5,   # [rad]
+            'RL_calf_joint': -1.5,    # [rad]
+            'FR_calf_joint': -1.5,  # [rad]
+            'RR_calf_joint': -1.5,    # [rad]
         }
+
+        # default_joint_angles = { # = target angles [rad] when action = 0.0
+        #     'FL_hip_joint': 0.0,   # [rad]
+        #     'RL_hip_joint': 0.0,   # [rad]
+        #     'FR_hip_joint': 0.0 ,  # [rad]
+        #     'RR_hip_joint': 0.0,   # [rad]
+
+        #     'FL_thigh_joint': 0.9,     # [rad]
+        #     'RL_thigh_joint': 0.9,   # [rad]
+        #     'FR_thigh_joint': 0.9,     # [rad]
+        #     'RR_thigh_joint': 0.9,   # [rad]
+
+        #     'FL_calf_joint': -1.8,   # [rad]
+        #     'RL_calf_joint': -1.8,    # [rad]
+        #     'FR_calf_joint': -1.8,  # [rad]
+        #     'RR_calf_joint': -1.8,    # [rad]
+        # }
 
 
     class control( LeggedRobotCfg.control ):
@@ -105,6 +105,20 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
 
         use_filter = False
 
+    class commands( LeggedRobotCfg.control ):
+        curriculum = False
+        max_curriculum = 1.
+        num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        resampling_time = 10.  # time before command are changed[s]
+        heading_command = True  # if true: compute ang vel command from heading error
+        global_reference = False
+
+        class ranges:
+            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
+            lin_vel_y = [-0.0, 0.0]  # min max [m/s]
+            ang_vel_yaw = [-1, 1]  # min max [rad/s]
+            heading = [-3.14, 3.14]
+
     class asset( LeggedRobotCfg.asset ):
         file = '{ROOT_DIR}/resources/go2/urdf/go2.urdf'
         foot_name = "foot"
@@ -116,7 +130,7 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.3
+        base_height_target = 0.30
         class scales( LeggedRobotCfg.rewards.scales ):
             # torques = -0.0001
             # termination = 0.0
@@ -140,12 +154,12 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
             tracking_ang_vel = 0.5
             # tracking_target = 1.0
             lin_vel_z = -2.0
-            ang_vel_xy = -0.05
+            ang_vel_xy = -0.1
             orientation = 0.0
             dof_vel = 0.0
             dof_acc = 0.0
             base_height = 0.0
-            feet_air_time = 1.0
+            feet_air_time = 0.0
             collision = 0.0
             feet_stumble = 0.0
             action_rate = -0.01
@@ -196,16 +210,18 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
             pos_limit = 0.1
             torque_limit = 0.1
             dof_vel_limits = 0.1
-            vel_smoothness = 1
-            acc_smoothness = 1
+            vel_smoothness = 0.1
+            acc_smoothness = 0.1
             collision = 0.1
-            # feet_contact_forces = 0.1
-            #feet_air_time = 1
+            #feet_contact_forces = 0.1
+            feet_air_time = 1
             #torques= 1
             #action_rate= 1
             base_height=1
             stand_still=1
             hip_pos=1
+            stumble=0.1
+            feet_height=1
  
         class d_values:
             pos_limit = 0.0
@@ -214,16 +230,18 @@ class Go2ConstraintTransRoughPhase1Cfg( LeggedRobotCfg ):
             vel_smoothness = 0.0
             acc_smoothness = 0.0
             collision = 0.0
-            # feet_contact_forces = 0.0
-            #feet_air_time = 0.06
+            #feet_contact_forces = 0.1
+            feet_air_time = 0.0
             #torques = 0.025
             #action_rate=0.07
             base_height=0.0
             stand_still=0.0
             hip_pos=0.0
+            stumble=0.0
+            feet_height=0.0
     
     class cost:
-        num_costs = 9
+        num_costs = 11
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -255,18 +273,18 @@ class Go2ConstraintTransRoughPhase1CfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 9
+        num_costs = 11
 
         teacher_act = True
         imi_flag = False
       
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = ''
+        run_name = 'test_stublm'
         experiment_name = 'rough_go2_constraint'
         policy_class_name = 'ActorCriticRmaTrans'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 4000
+        max_iterations = 3000
         resume = False
         resume_path = ''
  

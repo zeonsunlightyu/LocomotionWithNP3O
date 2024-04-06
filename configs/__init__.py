@@ -3,3 +3,6 @@ from .legged_robot_config import *
 from .go2_constraint import *
 from .go2_constraint_transformer_phase1 import *
 from .go2_constraint_transformer_phase2 import *
+from .go2_constraint_cnn_phase1 import *
+from .go2_constraint_cnn_phase2 import *
+from .go2_constraint_rnn import *
