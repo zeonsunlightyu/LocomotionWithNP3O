@@ -1219,16 +1219,6 @@ class LeggedRobot(BaseTask):
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
 
-    # def _reward_tracking_lin_vel(self):
-    #     # Tracking of linear velocity commands (xy axes)
-    #     lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
-    #     return torch.exp(-4*lin_vel_error)
-    
-    # def _reward_tracking_ang_vel(self):
-    #     # Tracking of angular velocity commands (yaw) 
-    #     ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
-    #     return torch.exp(-4*ang_vel_error)
-
     def _reward_feet_air_time(self):
         # Reward long steps
         # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
@@ -1257,10 +1247,17 @@ class LeggedRobot(BaseTask):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
     
+    # def _reward_foot_clearance(self):
+    #     foot_height = self.foot_positions[:, :, 2]
+    #     foot_xy_vel = torch.norm(self.foot_velocities[:,:,:2],dim=-1)
+    #     target_height = 0.1 + 0.02
+    #     rew_foot_clearance = torch.sum(torch.square(target_height - foot_height) * foot_xy_vel,dim=-1)
+    #     return rew_foot_clearance
+    
     def _reward_foot_clearance(self):
-        foot_height = self.foot_positions[:, :, 2]
+        foot_height = torch.mean(self.foot_positions[:, :, 2].unsqueeze(1).repeat(1,self.num_height_points,1) - self.measured_heights.unsqueeze(2), dim=1)
         foot_xy_vel = torch.norm(self.foot_velocities[:,:,:2],dim=-1)
-        target_height = 0.1
+        target_height = 0.1 + 0.02
         rew_foot_clearance = torch.sum(torch.square(target_height - foot_height) * foot_xy_vel,dim=-1)
         return rew_foot_clearance
 
@@ -1292,7 +1289,8 @@ class LeggedRobot(BaseTask):
     
     def _cost_feet_contact_forces(self):
         # penalize high contact forces
-        return 1.*(torch.sum(1.*(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) > self.cfg.rewards.max_contact_force), dim=1) > 0.0)
+        #return 1.*(torch.sum(1.*(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) > self.cfg.rewards.max_contact_force), dim=1) > 0.0)
+        return torch.mean(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1))
     
     def _cost_stumble(self):
         # Penalize feet hitting vertical surfaces

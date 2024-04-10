@@ -2,6 +2,7 @@ import numpy as np
 import os
 from datetime import datetime
 from configs.go2_constraint_cnn_phase1 import Go2ConstraintCnnRoughPhase1Cfg, Go2ConstraintCnnRoughPhase1CfgPPO
+from configs.go2_constraint_him import Go2ConstraintHimRoughCfg, Go2ConstraintHimRoughCfgPPO
 from configs.go2_constraint_rnn import Go2ConstraintRnnRoughCfg, Go2ConstraintRnnRoughCfgPPO
 from configs.go2_constraint_transformer_phase2 import Go2ConstraintTransRoughPhase2Cfg, Go2ConstraintTransRoughPhase2CfgPPO
 
@@ -23,5 +24,6 @@ if __name__ == '__main__':
     task_registry.register("go2N3poCnnPhase1",LeggedRobot,Go2ConstraintCnnRoughPhase1Cfg(),Go2ConstraintCnnRoughPhase1CfgPPO())
     task_registry.register("go2N3poCnnPhase2",LeggedRobot,Go2ConstraintCnnRoughPhase2Cfg(),Go2ConstraintCnnRoughPhase2CfgPPO())
     task_registry.register("go2N3poRnn",LeggedRobot,Go2ConstraintRnnRoughCfg(),Go2ConstraintRnnRoughCfgPPO())
+    task_registry.register("go2N3poHim",LeggedRobot,Go2ConstraintHimRoughCfg(),Go2ConstraintHimRoughCfgPPO())
     args = get_args()
     train(args)
