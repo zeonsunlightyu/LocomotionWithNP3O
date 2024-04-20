@@ -6,3 +6,5 @@ from .go2_constraint_transformer_phase2 import *
 from .go2_constraint_cnn_phase1 import *
 from .go2_constraint_cnn_phase2 import *
 from .go2_constraint_rnn import *
+from .go2_constraint_him import *
+from .go2_constraint_trans import *

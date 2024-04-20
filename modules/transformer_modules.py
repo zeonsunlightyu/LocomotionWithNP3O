@@ -234,7 +234,7 @@ class StateCausalTransformer(nn.Module):
     def forward(self, obs_history):
 
         # get embedding 
-        tok_emb = self.obs_embedding(obs_history)
+        tok_emb = self.embedding(obs_history)
 
         x = self.transformer.wpe(tok_emb.permute(1,0,2))
         x = x.permute(1,0,2)

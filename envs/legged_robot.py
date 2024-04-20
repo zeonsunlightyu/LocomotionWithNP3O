@@ -1169,7 +1169,8 @@ class LeggedRobot(BaseTask):
     
     def _reward_powers(self):
         # Penalize torques
-        return torch.sum(torch.abs(self.torques)*torch.abs(self.dof_vel), dim=1)
+        #return torch.sum(torch.abs(self.torques)*torch.abs(self.dof_vel), dim=1)
+        return torch.sum(torch.multiply(self.torques, self.dof_vel), dim=1)
 
     def _reward_dof_vel(self):
         # Penalize dof velocities
@@ -1289,8 +1290,8 @@ class LeggedRobot(BaseTask):
     
     def _cost_feet_contact_forces(self):
         # penalize high contact forces
-        #return 1.*(torch.sum(1.*(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) > self.cfg.rewards.max_contact_force), dim=1) > 0.0)
-        return torch.mean(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1))
+        return 1.*(torch.sum(1.*(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) > self.cfg.rewards.max_contact_force), dim=1) > 0.0)
+        # return torch.mean(torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1))
     
     def _cost_stumble(self):
         # Penalize feet hitting vertical surfaces
@@ -1310,10 +1311,10 @@ class LeggedRobot(BaseTask):
         self.last_contacts = contact
         first_contact = (self.feet_air_time > 0.) * contact_filt
         self.feet_air_time += self.dt
-        rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1) # reward only on first contact with the ground
+        rew_airTime = torch.sum((self.feet_air_time - 0.2) * first_contact, dim=1) # reward only on first contact with the ground
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
         self.feet_air_time *= ~contact_filt
-        return torch.abs(rew_airTime)
+        return 1.*(rew_airTime < 0.0)
     
     def _cost_ang_vel_xy(self):
         ang_vel_xy = 0.01*torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)

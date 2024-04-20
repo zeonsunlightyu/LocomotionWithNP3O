@@ -1,3 +1,4 @@
+from configs.go2_constraint_him import Go2ConstraintHimRoughCfg, Go2ConstraintHimRoughCfgPPO
 import cv2
 import os
 
@@ -43,7 +44,7 @@ def play(args):
     env_cfg.noise.add_noise = False
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_restitution = False
-    env_cfg.control.use_filter = False
+    env_cfg.control.use_filter = True
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
@@ -60,7 +61,7 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_2000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_5000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy = policy.to(env.device)
     policy.save_torch_jit_policy('model.pt',env.device)
@@ -103,7 +104,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 1
+        env.commands[:,0] = 0.7
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
@@ -132,6 +133,9 @@ if __name__ == '__main__':
     task_registry.register("go2N3poCnnPhase1",LeggedRobot,Go2ConstraintCnnRoughPhase1Cfg(),Go2ConstraintCnnRoughPhase1CfgPPO())
     task_registry.register("go2N3poCnnPhase2",LeggedRobot,Go2ConstraintCnnRoughPhase2Cfg(),Go2ConstraintCnnRoughPhase2CfgPPO())
     task_registry.register("go2N3poRnn",LeggedRobot,Go2ConstraintRnnRoughCfg(),Go2ConstraintRnnRoughCfgPPO())
+    task_registry.register("go2N3poHim",LeggedRobot,Go2ConstraintHimRoughCfg(),Go2ConstraintHimRoughCfgPPO())
+    task_registry.register("go2N3poTrans",LeggedRobot,Go2ConstraintTransRoughCfg(),Go2ConstraintTransRoughCfgPPO())
+
     RECORD_FRAMES = True
     args = get_args()
     play(args)

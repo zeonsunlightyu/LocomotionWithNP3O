@@ -101,9 +101,9 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
-        hip_scale_reduction = 1
+        hip_scale_reduction = 0.5
 
-        use_filter = False
+        use_filter = True
 
     class commands( LeggedRobotCfg.control ):
         curriculum = False
@@ -160,7 +160,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             dof_acc = -2.5e-7
             base_height = -1.0
             feet_air_time = 0.0
-            collision = 0.0
+            collision = -1.0
             feet_stumble = 0.0
             action_rate = -0.01
             action_smoothness=-0.01
@@ -269,36 +269,38 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             pos_limit = 0.3
             torque_limit = 0.3
             dof_vel_limits = 0.3
-            #vel_smoothness = 0.0005
-            # acc_smoothness = 0.1
-            # collision = 0.1
-            #feet_contact_forces = 0.0005
+            # vel_smoothness = 0.1
+            acc_smoothness = 0.1
+            #collision = 0.1
+            #feet_contact_forces = 0.1
+            #stumble = 0.1
             #feet_air_time = 1
             #torques= 1
             #action_rate= 1
-            # base_height=1
+            #base_height=1
             # stand_still=1
-            # hip_pos=1
+            # hip_pos=0.3
  
         class d_values:
             pos_limit = 0.0
             torque_limit = 0.0
             dof_vel_limits = 0.0
             # vel_smoothness = 0.0
-            # acc_smoothness = 0.0
-            # collision = 0.0
+            acc_smoothness = 0.0
+            #collision = 0.0
             #feet_contact_forces = 0.0
-            #feet_air_time = 0.06
+            #stumble = 0.0
+            #feet_air_time = 0.0
             #torques = 0.025
             #action_rate=0.07
-            # base_height=0.0
+            #base_height=0.0
             # stand_still=0.0
-            # hip_pos=0.0
+            #hip_pos=0.0
     
  
     
     class cost:
-        num_costs = 3
+        num_costs = 4
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -330,7 +332,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 3
+        num_costs = 4
 
         teacher_act = True
         imi_flag = True
@@ -341,7 +343,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 3000
+        max_iterations = 5000
         num_steps_per_env = 24
         resume = False
         resume_path = ''

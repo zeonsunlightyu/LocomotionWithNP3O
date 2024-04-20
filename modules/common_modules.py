@@ -38,6 +38,22 @@ def mlp_factory(activation, input_dims, out_dims, hidden_dims,last_act=False):
 
     return layers
 
+def mlp_layernorm_factory(activation, input_dims, out_dims, hidden_dims,last_act=False):
+    layers = []
+    layers.append(nn.Linear(input_dims, hidden_dims[0]))
+    layers.append(activation)
+    for l in range(len(hidden_dims)-1):
+        layers.append(nn.Linear(hidden_dims[l], hidden_dims[l + 1]))
+        layers.append(activation)
+        layers.append(nn.LayerNorm(hidden_dims[l + 1]))
+
+    if out_dims:
+        layers.append(nn.Linear(hidden_dims[-1], out_dims))
+    if last_act:
+        layers.append(activation)
+
+    return layers
+
 class RnnStateHistoryEncoder(nn.Module):
     def __init__(self,activation_fn, input_size, encoder_dims,hidden_size,output_size):
         super(RnnStateHistoryEncoder,self).__init__()
