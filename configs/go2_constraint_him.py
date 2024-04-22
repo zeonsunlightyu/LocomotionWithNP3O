@@ -272,8 +272,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             # vel_smoothness = 0.1
             acc_smoothness = 0.1
             #collision = 0.1
-            #feet_contact_forces = 0.1
-            #stumble = 0.1
+            feet_contact_forces = 0.1
+            stumble = 0.1
             #feet_air_time = 1
             #torques= 1
             #action_rate= 1
@@ -288,8 +288,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             # vel_smoothness = 0.0
             acc_smoothness = 0.0
             #collision = 0.0
-            #feet_contact_forces = 0.0
-            #stumble = 0.0
+            feet_contact_forces = 0.0
+            stumble = 0.0
             #feet_air_time = 0.0
             #torques = 0.025
             #action_rate=0.07
@@ -300,7 +300,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
  
     
     class cost:
-        num_costs = 4
+        num_costs = 6
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -332,18 +332,19 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 4
+        num_costs = 6
 
         teacher_act = True
         imi_flag = True
       
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = 'test_barlowtwins'
+        run_name = 'test_barlowtwins_feetcontact'
         experiment_name = 'rough_go2_constraint'
         policy_class_name = 'ActorCriticBarlowTwins'
+        # policy_class_name = 'ActorCriticTransBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 5000
+        max_iterations = 6000
         num_steps_per_env = 24
         resume = False
         resume_path = ''
