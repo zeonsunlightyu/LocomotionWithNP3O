@@ -15,7 +15,7 @@ State_Rl::State_Rl(CtrlComponents *ctrlComp)
 void State_Rl::enter()
 {
     // load policy
-    model_path = "model_barlow.pt";
+    model_path = "model_mixed_him_baseline_kp30.pt";
     load_policy();
 
     // initialize record
@@ -23,6 +23,10 @@ void State_Rl::enter()
 //    obs_buf = torch::zeros({history_length,30},device);
     obs_buf = torch::zeros({history_length,45},device);
     last_action = torch::zeros({1,12},device);
+
+    action_buf.to(torch::kHalf);
+    obs_buf.to(torch::kHalf);
+    last_action.to(torch::kHalf);
 
     // initialize default values
     gravity(0,0) = 0.0;
@@ -40,8 +44,11 @@ void State_Rl::enter()
     for (int j = 0; j < 12; j++)
     {
         action_temp.push_back(0.0);
-        action.push_back(_lowState->motorState[j].q);
-        prev_action.push_back(_lowState->motorState[j].q);
+        //action.push_back(_lowState->motorState[j].q);
+        //prev_action.push_back(_lowState->motorState[j].q);
+	action.push_back(init_pos[j]);
+        prev_action.push_back(init_pos[j]);
+
     }
 //    for (int j = 0; j < 12; j++)
 //    {
@@ -56,7 +63,7 @@ void State_Rl::enter()
     }
     std::cout << "init finised predict" << std::endl;
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 200; i++)
     {
         model_infer();
     }
@@ -97,6 +104,7 @@ void State_Rl::run()
         if (_percent_1 < 1) {
             for (int j = 0; j < 12; j++) {
                 _lowCmd->motorCmd[j].mode = 10;
+		_lowCmd->motorCmd[j].q = (1 - _percent_1) * _startPos[j] + _percent_1 * init_pos[j];
                 _lowCmd->motorCmd[j].dq = 0;
                 _lowCmd->motorCmd[j].Kp = (1 - _percent_1) * stand_kp[j] + _percent_1 * Kp;
                 _lowCmd->motorCmd[j].Kd = (1 - _percent_1) * stand_kd[j] + _percent_1 * Kd;
@@ -165,6 +173,7 @@ torch::Tensor State_Rl::get_obs()
     // cmd
     rx = rx * (1 - smooth) + (std::fabs(_lowState->userValue.rx) < dead_zone ? 0.0 : _lowState->userValue.rx) * smooth;
     ly = ly * (1 - smooth) + (std::fabs(_lowState->userValue.ly) < dead_zone ? 0.0 : _lowState->userValue.ly) * smooth;
+    lx = lx * (1 - smooth) + (std::fabs(_lowState->userValue.lx) < dead_zone ? 0.0 : _lowState->userValue.lx) * smooth;
 
     float max = 1.0;
     float min = -1.0;
@@ -179,7 +188,8 @@ torch::Tensor State_Rl::get_obs()
 //    }
 //    float  vel = 0.6;
     float rot = rx*3.14;
-    float vel = ly*2;
+    float vel = ly*2.0;
+    float lat_vel = lx*2.0;
 
     double heading = atan2((double)forward(1,0), (double)forward(0,0));
     double angle = (double)rot - heading;
@@ -193,7 +203,7 @@ torch::Tensor State_Rl::get_obs()
     angle = angle * 0.25;
 
     obs.push_back(vel);
-    obs.push_back(0.0);
+    obs.push_back(lat_vel);
     obs.push_back(angle);
 
     // pos
@@ -225,7 +235,9 @@ torch::Tensor State_Rl::get_obs()
 }
 
 torch::Tensor State_Rl::model_infer()
-{
+{   
+    torch::NoGradGuard no_grad;
+
     torch::Tensor obs_tensor = get_obs();
     //obs_buf = torch::cat({obs_buf.index({Slice(1,None),Slice()}),obs_tensor},0);
 //    auto obs_buf_batch = obs_buf.unsqueeze(0);
@@ -239,17 +251,19 @@ torch::Tensor State_Rl::model_infer()
     auto obs_buf_batch = obs_buf.unsqueeze(0);
 
     std::vector<torch::jit::IValue> inputs;
-    inputs.push_back(obs_tensor);
-    inputs.push_back(obs_buf_batch);
+    inputs.push_back(obs_tensor.to(torch::kHalf));
+    inputs.push_back(obs_buf_batch.to(torch::kHalf));
 
     // Execute the model and turn its output into a tensor.
     torch::Tensor action_tensor = model.forward(inputs).toTensor();
-//    action_tensor = 0.7*action_tensor + 0.3*last_action;
-    last_action = action_tensor.clone();
-    obs_buf = torch::cat({obs_buf.index({Slice(1,None),Slice()}),obs_tensor},0);
     action_buf = torch::cat({action_buf.index({Slice(1,None),Slice()}),action_tensor},0);
 
-    return action_tensor;
+    torch::Tensor action_blend_tensor = 0.8*action_tensor + 0.2*last_action;
+    last_action = action_tensor.clone();
+
+    obs_buf = torch::cat({obs_buf.index({Slice(1,None),Slice()}),obs_tensor},0);
+
+    return action_blend_tensor;
 }
 
 void State_Rl::infer()
@@ -272,9 +286,9 @@ void State_Rl::infer()
         // assign to control
         action_raw = action_raw.squeeze(0);
         // move to cpu
+	action_raw = action_raw.to(torch::kFloat32);
         action_raw = action_raw.to(torch::kCPU);
         // assess the result
-
         auto action_getter = action_raw.accessor<float,1>();
 
         write_cmd_lock.lock();
@@ -295,7 +309,8 @@ void State_Rl::infer()
 }
 
 void State_Rl::load_policy()
-{
+{   
+    std::cout << model_path << std::endl;
     // load model from check point
     std::cout << "cuda::is_available():" << torch::cuda::is_available() << std::endl;
     device= torch::kCPU;
@@ -305,6 +320,7 @@ void State_Rl::load_policy()
     model = torch::jit::load(model_path);
     std::cout << "load model is successed!" << std::endl;
     model.to(device);
+    model.to(torch::kHalf);
     std::cout << "load model to device!" << std::endl;
     model.eval();
 }

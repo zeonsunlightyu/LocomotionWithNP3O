@@ -262,3 +262,68 @@ class BetaVAE(nn.Module):
         z = self.reparameterize(mu, log_var)
         return  [self.decode(z,vel),z, mu, log_var, vel]
     
+class MixedMlp(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        latent_size,
+        hidden_size,
+        num_actions,
+        num_experts,
+    ):
+        super().__init__()
+
+        input_size = latent_size + input_size
+        inter_size = hidden_size + latent_size
+        output_size = num_actions
+
+        self.mlp_layers = [
+            (
+                nn.Parameter(torch.empty(num_experts, input_size, hidden_size)),
+                nn.Parameter(torch.empty(num_experts, hidden_size)),
+                F.elu,
+            ),
+            (
+                nn.Parameter(torch.empty(num_experts, inter_size, hidden_size)),
+                nn.Parameter(torch.empty(num_experts, hidden_size)),
+                F.elu,
+            ),
+            (
+                nn.Parameter(torch.empty(num_experts, inter_size, output_size)),
+                nn.Parameter(torch.empty(num_experts, output_size)),
+                None,
+            ),
+        ]
+
+        for index, (weight, bias, _) in enumerate(self.mlp_layers):
+            index = str(index)
+            torch.nn.init.kaiming_uniform_(weight)
+            bias.data.fill_(0.01)
+            self.register_parameter("w" + index, weight)
+            self.register_parameter("b" + index, bias)
+
+        # Gating network
+        gate_hsize = 128
+        self.gate = nn.Sequential(
+            nn.Linear(input_size, gate_hsize),
+            nn.ELU(),
+            nn.Linear(gate_hsize, gate_hsize),
+            nn.ELU(),
+            nn.Linear(gate_hsize, num_experts),
+        )
+
+    def forward(self, z, c):
+        coefficients = F.softmax(self.gate(torch.cat((z, c), dim=1)), dim=1)
+        layer_out = c
+        for (weight, bias, activation) in self.mlp_layers:
+            flat_weight = weight.flatten(start_dim=1, end_dim=2)
+            mixed_weight = torch.matmul(coefficients, flat_weight).view(
+                coefficients.shape[0], *weight.shape[1:3]
+            )
+
+            input = torch.cat((z, layer_out), dim=1).unsqueeze(1)
+            mixed_bias = torch.matmul(coefficients, bias).unsqueeze(1)
+            out = torch.baddbmm(mixed_bias, input, mixed_weight).squeeze(1)
+            layer_out = activation(out) if activation is not None else out
+
+        return layer_out

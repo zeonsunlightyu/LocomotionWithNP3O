@@ -34,7 +34,7 @@ def play(args):
     env_cfg.terrain.num_cols = 5
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
-    # env_cfg.terrain.mesh_type = 'plane'
+    #env_cfg.terrain.mesh_type = 'plane'
     env_cfg.domain_rand.push_robots = False
     #env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_base_com = False
@@ -63,6 +63,7 @@ def play(args):
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
     model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
+    policy.half()
     policy = policy.to(env.device)
     policy.save_torch_jit_policy('model.pt',env.device)
 
@@ -84,7 +85,7 @@ def play(args):
 
     img_idx = 0
 
-    video_duration = 40
+    video_duration = 20
     num_frames = int(video_duration / env.dt)
     print(f'gathering {num_frames} frames')
     video = None
@@ -108,7 +109,7 @@ def play(args):
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
-        actions = policy.act_teacher(obs)
+        actions = policy.act_teacher(obs.half())
         # actions = torch.clamp(actions,-1.2,1.2)
 
         obs, privileged_obs, rewards,costs,dones, infos = env.step(actions)
@@ -126,15 +127,18 @@ def play(args):
     print("feet air reward",feet_air_time/num_frames)
 
     video.release()
+
+    #test model profile
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]) as prof:
+         for i in range(1000):
+            with torch.no_grad():
+              actions = policy.act_teacher(obs.half())
+    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10))
+
 if __name__ == '__main__':
-    task_registry.register("go2N3po",LeggedRobot,Go2ConstraintRoughCfg(),Go2ConstraintRoughCfgPPO())
-    task_registry.register("go2N3poTransPhase1",LeggedRobot,Go2ConstraintTransRoughPhase1Cfg(),Go2ConstraintTransRoughPhase1CfgPPO())
-    task_registry.register("go2N3poTransPhase2",LeggedRobot,Go2ConstraintTransRoughPhase2Cfg(),Go2ConstraintTransRoughPhase2CfgPPO())
-    task_registry.register("go2N3poCnnPhase1",LeggedRobot,Go2ConstraintCnnRoughPhase1Cfg(),Go2ConstraintCnnRoughPhase1CfgPPO())
-    task_registry.register("go2N3poCnnPhase2",LeggedRobot,Go2ConstraintCnnRoughPhase2Cfg(),Go2ConstraintCnnRoughPhase2CfgPPO())
-    task_registry.register("go2N3poRnn",LeggedRobot,Go2ConstraintRnnRoughCfg(),Go2ConstraintRnnRoughCfgPPO())
     task_registry.register("go2N3poHim",LeggedRobot,Go2ConstraintHimRoughCfg(),Go2ConstraintHimRoughCfgPPO())
-    task_registry.register("go2N3poTrans",LeggedRobot,Go2ConstraintTransRoughCfg(),Go2ConstraintTransRoughCfgPPO())
+    task_registry.register("go2N3poTransP1",LeggedRobot,Go2ConstraintTransP1RoughCfg(),Go2ConstraintTransP1RoughCfgPPO())
+    task_registry.register("go2N3poTransP2",LeggedRobot,Go2ConstraintTransP2RoughCfg(),Go2ConstraintTransP2RoughCfgPPO())
 
     RECORD_FRAMES = True
     args = get_args()

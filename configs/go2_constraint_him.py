@@ -35,13 +35,13 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         num_envs = 4096
 
         n_scan = 187
-        n_priv_latent =  4 + 1 + 12 + 12 + 12 + 6 + 1 + 4 + 1 - 3
+        n_priv_latent =  4 + 1 + 12 + 12 + 12 + 6 + 1 + 4 + 1 - 3 + 4
         n_proprio = 45
         history_len = 10
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.34] # x,y,z [m]
+        pos = [0.0, 0.0, 0.42] # x,y,z [m]
         """
           unitree go2 sdk order:
                -0.1 <-3 FR_hip_joint 0 -> 0.0
@@ -74,34 +74,16 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             'RR_calf_joint': -1.5,    # [rad]
         }
 
-        # default_joint_angles = { # = target angles [rad] when action = 0.0
-        #     'FL_hip_joint': 0.0,   # [rad]
-        #     'RL_hip_joint': 0.0,   # [rad]
-        #     'FR_hip_joint': 0.0 ,  # [rad]
-        #     'RR_hip_joint': 0.0,   # [rad]
-
-        #     'FL_thigh_joint': 0.9,     # [rad]
-        #     'RL_thigh_joint': 0.9,   # [rad]
-        #     'FR_thigh_joint': 0.9,     # [rad]
-        #     'RR_thigh_joint': 0.9,   # [rad]
-
-        #     'FL_calf_joint': -1.8,   # [rad]
-        #     'RL_calf_joint': -1.8,    # [rad]
-        #     'FR_calf_joint': -1.8,  # [rad]
-        #     'RR_calf_joint': -1.8,    # [rad]
-        # }
-
-
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 20.}  # [N*m/rad]
-        damping = {'joint': 0.5}     # [N*m*s/rad]
+        stiffness = {'joint': 30.}  # [N*m/rad]
+        damping = {'joint': 0.75}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
-        hip_scale_reduction = 0.5
+        hip_scale_reduction = 1
 
         use_filter = True
 
@@ -130,24 +112,10 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.34
+        base_height_target = 0.30
+        clearance_height_target = -0.2
+
         class scales( LeggedRobotCfg.rewards.scales ):
-            # torques = -0.0001
-            # termination = 0.0
-            # tracking_lin_vel = 1.0
-            # tracking_ang_vel = 0.5
-            # lin_vel_z = -2.0
-            # ang_vel_xy = -0.05
-            # orientation = -0.2
-            # dof_vel = 0.0
-            # dof_acc = -2.5e-7
-            # base_height = -1
-            # feet_air_time = 1.0
-            # collision = 0.0
-            # feet_stumble = 0.0
-            # action_rate = -0.01
-            # action_smoothness=-0.001
-            # stand_still = 0.0
 
             torques = 0.0
             powers = -2e-5
@@ -160,63 +128,13 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             dof_acc = -2.5e-7
             base_height = -1.0
             feet_air_time = 0.0
-            collision = -1.0
+            collision = 0.0
             feet_stumble = 0.0
             action_rate = -0.01
             action_smoothness=-0.01
             stand_still = 0.0
             foot_clearance= -0.01
             orientation=-0.2
-
-            # torques = -0.00001
-            # termination = 0.0
-            # tracking_lin_vel = 1.0
-            # tracking_ang_vel = 0.5
-            # # tracking_target = 1.0
-            # lin_vel_z = -2.0
-            # ang_vel_xy = -0.05
-            # orientation = 0.0
-            # dof_vel = 0.0
-            # dof_acc = 0.0
-            # base_height = 0.0
-            # feet_air_time = 1.0
-            # collision = 0.0
-            # feet_stumble = 0.0
-            # action_rate = -0.01
-            # stand_still = 0.0
-
-            # torques = -0.0002
-            # termination = 0.0
-            # tracking_lin_vel = 1.0
-            # tracking_ang_vel = 0.5
-            # lin_vel_z = -2.0
-            # ang_vel_xy = -0.05
-            # orientation = 0.0
-            # dof_vel = 0.0
-            # dof_acc = 0.0
-            # base_height = 0.0
-            # feet_air_time = 1.0
-            # collision = 0.0
-            # feet_stumble = 0.0
-            # action_rate = -0.01
-            # stand_still = 0.0
-            
-            # torques = -0.0002
-            # termination = 0.0
-            # tracking_lin_vel = 1.0
-            # tracking_ang_vel = 0.5
-            # # tracking_target = 1.0
-            # lin_vel_z = -2.0
-            # ang_vel_xy = -0.05
-            # orientation = 0.0
-            # dof_vel = 0.0
-            # dof_acc = 0.0
-            # base_height = 0.0
-            # feet_air_time = 1.0
-            # collision = 0.0
-            # feet_stumble = 0.0
-            # action_rate = -0.01
-            # stand_still = 0.0
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
@@ -266,41 +184,29 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
     
     class costs:
         class scales:
-            pos_limit = 0.3
-            torque_limit = 0.3
-            dof_vel_limits = 0.3
-            # vel_smoothness = 0.1
+            pos_limit = 0.1
+            torque_limit = 0.1
+            dof_vel_limits = 0.1
+            feet_air_time = 0.1
             acc_smoothness = 0.1
-            #collision = 0.1
-            feet_contact_forces = 0.1
-            stumble = 0.1
-            #feet_air_time = 1
-            #torques= 1
-            #action_rate= 1
-            #base_height=1
-            # stand_still=1
-            # hip_pos=0.3
- 
+            collision = 0.1
+            stand_still = 0.1
+            hip_pos = 0.1
+            base_height = 0.1
+
         class d_values:
             pos_limit = 0.0
             torque_limit = 0.0
             dof_vel_limits = 0.0
-            # vel_smoothness = 0.0
+            feet_air_time = 0.1
             acc_smoothness = 0.0
-            #collision = 0.0
-            feet_contact_forces = 0.0
-            stumble = 0.0
-            #feet_air_time = 0.0
-            #torques = 0.025
-            #action_rate=0.07
-            #base_height=0.0
-            # stand_still=0.0
-            #hip_pos=0.0
-    
+            collision = 0.0
+            stand_still = 0.0
+            hip_pos = 0.0
+            base_height = 0.0
  
-    
     class cost:
-        num_costs = 6
+        num_costs = 9
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -311,11 +217,11 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 1.e-3
-        max_grad_norm = 0.01
+        max_grad_norm = 1
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         cost_value_loss_coef = 0.1
-        cost_viol_loss_coef = 0.1
+        cost_viol_loss_coef = 1
 
     class policy( LeggedRobotCfgPPO.policy):
         init_noise_std = 1.0
@@ -332,16 +238,15 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 6
+        num_costs = 9
 
         teacher_act = True
         imi_flag = True
       
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = 'test_barlowtwins_feetcontact'
+        run_name = 'test_barlowtwins'
         experiment_name = 'rough_go2_constraint'
-        policy_class_name = 'ActorCriticBarlowTwins'
-        # policy_class_name = 'ActorCriticTransBarlowTwins'
+        policy_class_name = 'ActorCriticMixedBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
         max_iterations = 6000

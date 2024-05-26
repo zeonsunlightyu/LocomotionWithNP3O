@@ -218,6 +218,8 @@ class StateCausalTransformer(nn.Module):
         ))
         # mlp
         self.mlp_head = nn.Sequential(
+            nn.Linear(config.n_embd, config.n_embd),
+            nn.GELU(),
             nn.Linear(config.n_embd, config.n_action)
         )
 
@@ -245,4 +247,103 @@ class StateCausalTransformer(nn.Module):
         x = self.mlp_head(x[:,-1,:])
 
         return x
+
+class StateCausalHeadlessTransformer(nn.Module):
+    def __init__(self, config) -> None:
+        super().__init__()
+        self.config = config
+        # obs embedding
+        self.embedding = nn.Sequential(
+            nn.Linear(config.n_obs, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_embd)
+        )
+        # transformer 
+        self.transformer = nn.ModuleDict(dict(
+            wpe = PositionalEncoding(config.n_embd,dropout=0.0),
+            drop = nn.Dropout(config.dropout),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+        ))
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
     
+    def forward(self, obs_history):
+
+        # get embedding 
+        tok_emb = self.embedding(obs_history)
+
+        x = self.transformer.wpe(tok_emb.permute(1,0,2))
+        x = x.permute(1,0,2)
+        x = self.transformer.drop(tok_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+
+        return x[:,-1,:]
+    
+class StateCausalClsTransformer(nn.Module):
+    def __init__(self, config) -> None:
+        super().__init__()
+        self.config = config
+        # obs embedding
+        self.embedding = nn.Sequential(
+            nn.Linear(config.n_obs, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_embd)
+        )
+        # transformer 
+        self.transformer = nn.ModuleDict(dict(
+            wpe = PositionalEncoding(config.n_embd,dropout=0.0),
+            drop = nn.Dropout(config.dropout),
+            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            ln_f = LayerNorm(config.n_embd, bias=config.bias),
+        ))
+        # mlp
+        self.mlp_head = nn.Sequential(
+            nn.Linear(config.n_embd, config.n_embd),
+            nn.GELU(),
+            nn.Linear(config.n_embd, config.n_action)
+        )
+
+        # cls token
+        self.cls_embedding = nn.Linear(3,config.n_embd)
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    
+    def forward(self, obs_history):
+
+        # get embedding 
+        tok_emb = self.embedding(obs_history)
+        # get cls token
+        cls_token = self.cls_embedding(obs_history[:,-1,6:9])
+        # combine token emb 
+        tok_emb = torch.cat([
+                tok_emb,
+                cls_token.unsqueeze(1)
+            ], dim=1)
+
+        x = self.transformer.wpe(tok_emb.permute(1,0,2))
+        x = x.permute(1,0,2)
+        x = self.transformer.drop(tok_emb)
+        for block in self.transformer.h:
+            x = block(x)
+        x = self.transformer.ln_f(x)
+        x = self.mlp_head(x[:,-1,:])
+
+        return x

@@ -32,7 +32,8 @@ private:
                               0.0, 1.36, -2.65, 0.0, 1.36, -2.65};
     float _targetPos_2[12] = {0.0, 0.9, -1.8, 0.0, 0.9, -1.8,
                               0.0, 0.9, -1.8, 0.0, 0.9, -1.8};
-    float _startPos[12];
+    float _startPos[12] = {0.0, 0.67, -1.3, 0.0, 0.67, -1.3,
+                           0.0, 0.67, -1.3, 0.0, 0.67, -1.3};
     float _duration_1 = 500;   // steps
     float _duration_2 = 10; // B2
     float _percent_1 = 0;    //%
@@ -51,6 +52,7 @@ private:
 
     float rx = 0.;
     float ly = 0.;
+    float lx = 0.;
 
     std::vector<float> action;
     std::vector<float> action_temp;
