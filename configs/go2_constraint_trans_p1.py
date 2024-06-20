@@ -95,8 +95,8 @@ class Go2ConstraintTransP1RoughCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 30.}  # [N*m/rad]
-        damping = {'joint': 0.75}     # [N*m*s/rad]
+        stiffness = {'joint': 40.}  # [N*m/rad]
+        damping = {'joint': 1.0}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
@@ -271,18 +271,26 @@ class Go2ConstraintTransP1RoughCfg( LeggedRobotCfg ):
             pos_limit = 0.1
             torque_limit = 0.1
             dof_vel_limits = 0.1
+            feet_air_time = 0.1
             acc_smoothness = 0.1
             collision = 0.1
-         
+            stand_still = 0.1
+            hip_pos = 0.1
+            base_height = 0.1
+
         class d_values:
             pos_limit = 0.0
             torque_limit = 0.0
             dof_vel_limits = 0.0
+            feet_air_time = 0.1
             acc_smoothness = 0.0
             collision = 0.0
+            stand_still = 0.0
+            hip_pos = 0.0
+            base_height = 0.0
           
     class cost:
-        num_costs = 5
+        num_costs = 9
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -293,7 +301,7 @@ class Go2ConstraintTransP1RoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 1e-3
-        max_grad_norm = 0.01
+        max_grad_norm = 1
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         cost_value_loss_coef = 0.1
@@ -314,7 +322,7 @@ class Go2ConstraintTransP1RoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 5
+        num_costs = 9
 
         teacher_act = True
         imi_flag = True

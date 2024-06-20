@@ -35,7 +35,7 @@ def play(args):
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
     #env_cfg.terrain.mesh_type = 'plane'
-    env_cfg.domain_rand.push_robots = False
+    #env_cfg.domain_rand.push_robots = False
     #env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_base_com = False
     env_cfg.domain_rand.randomize_base_mass = False
@@ -45,6 +45,8 @@ def play(args):
     env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_restitution = False
     env_cfg.control.use_filter = True
+    env_cfg.domain_rand.disturbance = False
+    env_cfg.domain_rand.randomize_kpkd = False
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
@@ -61,7 +63,7 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_10000_add_dist.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)
@@ -105,7 +107,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 1
+        env.commands[:,0] = -0.5
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0

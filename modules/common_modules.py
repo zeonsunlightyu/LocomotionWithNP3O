@@ -1,4 +1,5 @@
 import torch.nn as nn
+import math
 import torch
 from copy import deepcopy
 from collections import defaultdict
@@ -42,6 +43,7 @@ def mlp_layernorm_factory(activation, input_dims, out_dims, hidden_dims,last_act
     layers = []
     layers.append(nn.Linear(input_dims, hidden_dims[0]))
     layers.append(activation)
+    layers.append(nn.LayerNorm(hidden_dims[0]))
     for l in range(len(hidden_dims)-1):
         layers.append(nn.Linear(hidden_dims[l], hidden_dims[l + 1]))
         layers.append(activation)
@@ -77,7 +79,7 @@ class RnnStateHistoryEncoder(nn.Module):
         return out
     
 class RnnBarlowTwinsStateHistoryEncoder(nn.Module):
-    def __init__(self,activation_fn, input_size, encoder_dims,hidden_size,output_size,final_output_size):
+    def __init__(self,activation_fn, input_size, encoder_dims,hidden_size,output_size):
         super(RnnBarlowTwinsStateHistoryEncoder,self).__init__()
         self.activation_fn = activation_fn
         self.encoder_dims = encoder_dims
@@ -87,19 +89,19 @@ class RnnBarlowTwinsStateHistoryEncoder(nn.Module):
         self.encoder = nn.Sequential(*mlp_factory(activation=activation_fn,
                                    input_dims=input_size,
                                    hidden_dims=encoder_dims,
-                                   out_dims=output_size))
+                                   out_dims=int(hidden_size/2)))
         
-        self.rnn = nn.GRU(input_size=output_size,
+        self.rnn = nn.GRU(input_size=int(hidden_size/2),
                            hidden_size=hidden_size,
-                           batch_first=True)
+                           batch_first=True,
+                           num_layers = 2)
         
-        self.layer_norm = nn.LayerNorm(output_size)
-        
-        self.final_layer = nn.Linear(hidden_size,final_output_size)
+        self.final_layer = nn.Linear(hidden_size,output_size)
         
     def forward(self,obs):
+        h_0 = torch.zeros(2,obs.size(0),self.hidden_size,device=obs.device).requires_grad_()
         obs = self.encoder(obs)
-        out, h_n = self.rnn(obs)
+        out, h_n = self.rnn(obs,h_0)
         latent = self.final_layer(out[:,-1,:])
         return latent
     
@@ -327,3 +329,259 @@ class MixedMlp(nn.Module):
             layer_out = activation(out) if activation is not None else out
 
         return layer_out
+    
+class LipschitzLinear(torch.nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = torch.nn.Parameter(torch.empty((out_features, in_features), requires_grad=True))
+        self.bias = torch.nn.Parameter(torch.empty((out_features), requires_grad=True))
+        self.c = torch.nn.Parameter(torch.empty((1), requires_grad=True))
+        self.softplus = torch.nn.Softplus()
+        self.initialize_parameters()
+
+    def initialize_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+        self.bias.data.uniform_(-stdv, stdv)
+
+        # compute lipschitz constant of initial weight to initialize self.c
+        W = self.weight.data
+        W_abs_row_sum = torch.abs(W).sum(1)
+        self.c.data = W_abs_row_sum.max() # just a rough initialization
+
+    def get_lipschitz_constant(self):
+        return self.softplus(self.c)
+
+    def forward(self, input):
+        lipc = self.softplus(self.c)
+        scale = lipc / torch.abs(self.weight).sum(1)
+        scale = torch.clamp(scale, max=1.0)
+        return torch.nn.functional.linear(input, self.weight * scale.unsqueeze(1), self.bias)
+
+class lipmlp(torch.nn.Module):
+    def __init__(self, dims):
+        """
+        dim[0]: input dim
+        dim[1:-1]: hidden dims
+        dim[-1]: out dim
+
+        assume len(dims) >= 3
+        """
+        super().__init__()
+
+        self.layers = torch.nn.ModuleList()
+        for ii in range(len(dims)-2):
+            self.layers.append(LipschitzLinear(dims[ii], dims[ii+1]))
+
+        self.layer_output = LipschitzLinear(dims[-2], dims[-1])
+        # self.relu = torch.nn.ReLU()
+        self.relu = torch.nn.ELU()
+
+    def get_lipschitz_loss(self):
+        loss_lipc = 1.0
+        for ii in range(len(self.layers)):
+            loss_lipc = loss_lipc * self.layers[ii].get_lipschitz_constant()
+        loss_lipc = loss_lipc *  self.layer_output.get_lipschitz_constant()
+        return loss_lipc
+
+    def forward(self, x):
+        for ii in range(len(self.layers)):
+            x = self.layers[ii](x)
+            x = self.relu(x)
+        return self.layer_output(x)
+    
+class MixedLipMlp(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        latent_size,
+        hidden_size,
+        num_actions,
+        num_experts,
+    ):
+        super().__init__()
+
+        input_size = latent_size + input_size
+        inter_size = hidden_size + latent_size
+        output_size = num_actions
+
+        self.mlp_layers = [
+            (
+                nn.Parameter(torch.empty(num_experts, input_size, hidden_size)),
+                nn.Parameter(torch.empty(num_experts, hidden_size)),
+                F.elu,
+            ),
+            (
+                nn.Parameter(torch.empty(num_experts, inter_size, hidden_size)),
+                nn.Parameter(torch.empty(num_experts, hidden_size)),
+                F.elu,
+            ),
+            (
+                nn.Parameter(torch.empty(num_experts, inter_size, output_size)),
+                nn.Parameter(torch.empty(num_experts, output_size)),
+                None,
+            ),
+        ]
+
+        for index, (weight, bias, _) in enumerate(self.mlp_layers):
+            index = str(index)
+            torch.nn.init.kaiming_uniform_(weight)
+            bias.data.fill_(0.01)
+            self.register_parameter("w" + index, weight)
+            self.register_parameter("b" + index, bias)
+
+        # Gating network
+        gate_hsize = 128
+        self.gate = lipmlp([input_size,gate_hsize,gate_hsize,num_experts])
+
+    def get_gate_lip_loss(self):
+        return 5e-5*self.gate.get_lipschitz_loss()
+
+    def forward(self, z, c):
+        coefficients = F.softmax(self.gate(torch.cat((z, c), dim=1)), dim=1)
+        layer_out = c
+        for (weight, bias, activation) in self.mlp_layers:
+            flat_weight = weight.flatten(start_dim=1, end_dim=2)
+            mixed_weight = torch.matmul(coefficients, flat_weight).view(
+                coefficients.shape[0], *weight.shape[1:3]
+            )
+
+            input = torch.cat((z, layer_out), dim=1).unsqueeze(1)
+            mixed_bias = torch.matmul(coefficients, bias).unsqueeze(1)
+            out = torch.baddbmm(mixed_bias, input, mixed_weight).squeeze(1)
+            layer_out = activation(out) if activation is not None else out
+
+        return layer_out
+    
+# class MixedLipschitzLinear(torch.nn.Module):
+#     def __init__(self, in_features, out_features,num_experts):
+#         super().__init__()
+#         self.in_features = in_features
+#         self.out_features = out_features
+#         self.weight = torch.nn.Parameter(torch.empty((num_experts,out_features, in_features), requires_grad=True))
+#         self.bias = torch.nn.Parameter(torch.empty((num_experts,out_features), requires_grad=True))
+#         self.c = torch.nn.Parameter(torch.empty((1), requires_grad=True))
+#         self.softplus = torch.nn.Softplus()
+#         self.initialize_parameters()
+
+#     def initialize_parameters(self):
+#         stdv = 1. / math.sqrt(self.weight.size(1))
+#         self.weight.data.uniform_(-stdv, stdv)
+#         self.bias.data.uniform_(-stdv, stdv)
+
+#         # compute lipschitz constant of initial weight to initialize self.c
+#         W = self.weight.data
+#         W_abs_row_sum = torch.abs(W).sum(1)
+#         self.c.data = W_abs_row_sum.max() # just a rough initialization
+
+#     def get_lipschitz_constant(self):
+#         return self.softplus(self.c)
+
+#     def forward(self, input,coefficients):
+
+#         flat_weight = self.weight.flatten(start_dim=1, end_dim=2)
+#         mixed_weight = torch.matmul(coefficients, flat_weight).view(
+#                 coefficients.shape[0], *self.weight.shape[1:3]
+#             )
+#         mixed_bias = torch.matmul(coefficients, self.bias).unsqueeze(1)
+        
+#         lipc = self.softplus(self.c)
+#         scale = lipc / torch.abs(mixed_weight).sum(1)
+#         scale = torch.clamp(scale, max=1.0)
+
+#         return torch.nn.functional.linear(input, mixed_weight * scale.unsqueeze(1), mixed_bias)
+    
+# class lipMixedmlp(torch.nn.Module):
+#     def __init__(self, dims):
+#         """
+#         dim[0]: input dim
+#         dim[1:-1]: hidden dims
+#         dim[-1]: out dim
+
+#         assume len(dims) >= 3
+#         """
+#         super().__init__()
+
+#         self.layers = torch.nn.ModuleList()
+#         for ii in range(len(dims)-2):
+#             self.layers.append(MixedLipschitzLinear(dims[ii], dims[ii+1]))
+
+#         self.layer_output = LipschitzLinear(dims[-2], dims[-1])
+#         self.elu = torch.nn.ELU()
+
+#     def get_lipschitz_loss(self):
+#         loss_lipc = 1.0
+#         for ii in range(len(self.layers)):
+#             loss_lipc = loss_lipc * self.layers[ii].get_lipschitz_constant()
+#         loss_lipc = loss_lipc *  self.layer_output.get_lipschitz_constant()
+#         return loss_lipc
+
+#     def forward(self, x, coefficients):
+#         for ii in range(len(self.layers)):
+#             x = self.layers[ii](x,coefficients)
+#             x = self.elu(x)
+#         return self.layer_output(x)
+    
+# class MixedLipMlp(nn.Module):
+#     def __init__(
+#         self,
+#         input_size,
+#         latent_size,
+#         hidden_size,
+#         num_actions,
+#         num_experts,
+#     ):
+#         super().__init__()
+
+#         input_size = latent_size + input_size
+#         inter_size = hidden_size + latent_size
+#         output_size = num_actions
+
+#         self.mlp_layers = torch.ModuleList()
+#         self.mlp_layers = [
+#             (
+#                 nn.Parameter(torch.empty(num_experts, input_size, hidden_size)),
+#                 F.elu,
+#             ),
+#             (
+#                 nn.Parameter(torch.empty(num_experts, inter_size, hidden_size)),
+#                 F.elu,
+#             ),
+#             (
+#                 nn.Parameter(torch.empty(num_experts, inter_size, output_size)),
+#                 None,
+#             ),
+#         ]
+
+#         # Gating network
+#         gate_hsize = 128
+#         self.gate = lipmlp([input_size,gate_hsize,gate_hsize,num_experts])
+
+#     def get_mlp_lipschitz_loss(self):
+#         loss_lipc = 1.0
+#         for ii in range(len(self.layers)):
+#             loss_lipc = loss_lipc * self.layers[ii].get_lipschitz_constant()
+#         loss_lipc = loss_lipc *  self.layer_output.get_lipschitz_constant()
+#         return loss_lipc
+    
+#     def get_gate_lipschitz_loss(self):
+#         return 
+
+#     def forward(self, z, c):
+#         coefficients = F.softmax(self.gate(torch.cat((z, c), dim=1)), dim=1)
+#         layer_out = c
+#         for (weight, bias, activation) in self.mlp_layers:
+#             flat_weight = weight.flatten(start_dim=1, end_dim=2)
+#             mixed_weight = torch.matmul(coefficients, flat_weight).view(
+#                 coefficients.shape[0], *weight.shape[1:3]
+#             )
+
+#             input = torch.cat((z, layer_out), dim=1).unsqueeze(1)
+#             mixed_bias = torch.matmul(coefficients, bias).unsqueeze(1)
+#             out = torch.baddbmm(mixed_bias, input, mixed_weight).squeeze(1)
+#             layer_out = activation(out) if activation is not None else out
+
+#         return layer_out
+    
