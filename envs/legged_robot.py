@@ -1433,6 +1433,20 @@ class LeggedRobot(BaseTask):
         foot_leteral_vel = torch.sqrt(torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)).view(self.num_envs, -1)
         return torch.sum(height_error * foot_leteral_vel, dim=1)
     
+    def _reward_foot_regular(self):
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        footvel_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footpos_translated[:, i, :])
+            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footvel_translated[:, i, :])
+        
+        #height_error = torch.square(footpos_in_body_frame[:, :, 2] - self.cfg.rewards.clearance_height_target).view(self.num_envs, -1)
+        height_error = torch.clamp(torch.exp(footpos_in_body_frame[:, :, 2]/(0.025*self.cfg.rewards.base_height_target)).view(self.num_envs, -1),0,1)
+        foot_leteral_vel = torch.sqrt(torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)).view(self.num_envs, -1)
+        return torch.sum(height_error * foot_leteral_vel, dim=1)
+    
     def _reward_hip_pos(self):
         #return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - self.default_dof_pos[:, [0, 3, 6, 9]]), dim=1)
         flag = 1.*(torch.abs(self.commands[:,1]) == 0)
@@ -1581,7 +1595,7 @@ class LeggedRobot(BaseTask):
         # base_height = self._get_base_heights()
         # return torch.square(base_height - self.cfg.rewards.base_height_target)
         base_height = self._get_base_heights()
-        return 1.*(torch.square(base_height - self.cfg.rewards.base_height_target)>0.0001)
+        return torch.square(base_height - self.cfg.rewards.base_height_target)
     
     def _cost_feet_air_time(self):
         # Reward long steps
@@ -1809,6 +1823,13 @@ class LeggedRobot(BaseTask):
     def _cost_powers_dist(self):
         # Penalize power dist
         return 10e-5*torch.var(self.torques*self.dof_vel, dim=1)
+    
+    def _cost_idol_contact(self):
+        contact_filt = 1.*self.contact_filt
+        sum_contact_filt_flag = 1.*(torch.sum(contact_filt,dim=-1) < 4)
+        idol_flag = 1.*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        return idol_flag*sum_contact_filt_flag
+    
 
 
 
