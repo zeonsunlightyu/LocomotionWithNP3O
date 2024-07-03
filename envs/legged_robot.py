@@ -1403,6 +1403,9 @@ class LeggedRobot(BaseTask):
         # Penalize feet hitting vertical surfaces
         return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
+    
+    def _reward_vertical_contact(self):
+        return torch.sum(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2),dim=-1)
         
     def _reward_stand_still(self):
         # Penalize motion at zero commands
@@ -1449,8 +1452,9 @@ class LeggedRobot(BaseTask):
     
     def _reward_hip_pos(self):
         #return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - self.default_dof_pos[:, [0, 3, 6, 9]]), dim=1)
-        flag = 1.*(torch.abs(self.commands[:,1]) == 0)
-        return flag * torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - self.default_dof_pos[:, [0, 3, 6, 9]]), dim=1)
+        # flag = 1.*(torch.abs(self.commands[:,1]) == 0)
+        # return flag * torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - torch.zeros_like(self.dof_pos[:, [0, 3, 6, 9]])), dim=1)
+        return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - torch.zeros_like(self.dof_pos[:, [0, 3, 6, 9]])), dim=1)
     
     def _reward_phase_contact(self):
         contact_goal = 1.*(torch.sin(self.phase) > 0.0)
@@ -1514,6 +1518,17 @@ class LeggedRobot(BaseTask):
         width_2 = torch.abs(footpos_in_body_frame[:,2,1] - footpos_in_body_frame[:,3,1])
 
         return 1.*(torch.abs(self.commands[:,1]) == 0)*torch.square(width_1 - width_2)
+    
+    def _reward_foot_dia_enforce(self):
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footpos_translated[:, i, :])
+        
+        dia_1 = torch.sqrt(torch.sum(torch.square(footpos_in_body_frame[:,0,:] - footpos_in_body_frame[:,2,:]),dim=-1))
+        dia_2 = torch.sqrt(torch.sum(torch.square(footpos_in_body_frame[:,1,:] - footpos_in_body_frame[:,3,:]),dim=-1))
+
+        return (torch.square(dia_1 - 0.51) + torch.square(dia_2 - 0.51))/2
     
     def _reward_foot_width_cons(self):
         cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
@@ -1638,9 +1653,8 @@ class LeggedRobot(BaseTask):
     
     def _cost_hip_pos(self):
         #return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - self.default_dof_pos[:, [0, 3, 6, 9]]), dim=1)
-        flag = 1.*(torch.abs(self.commands[:,1]) == 0)
         # return flag * torch.mean(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - torch.zeros_like(self.dof_pos[:, [0, 3, 6, 9]])), dim=1)
-        return flag * 1.*(torch.abs(torch.mean(self.dof_pos[:, [0, 3, 6, 9]],dim=-1)) > 0.0)
+        return torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - 0.0),dim=-1)
     
     def _cost_feet_height(self):
         # Reward high steps
@@ -1829,6 +1843,17 @@ class LeggedRobot(BaseTask):
         sum_contact_filt_flag = 1.*(torch.sum(contact_filt,dim=-1) < 4)
         idol_flag = 1.*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
         return idol_flag*sum_contact_filt_flag
+    
+    def _cost_foot_dia_enforce(self):
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footpos_translated[:, i, :])
+        
+        dia_1 = torch.sqrt(torch.sum(torch.square(footpos_in_body_frame[:,0,:] - footpos_in_body_frame[:,2,:]),dim=-1))
+        dia_2 = torch.sqrt(torch.sum(torch.square(footpos_in_body_frame[:,1,:] - footpos_in_body_frame[:,3,:]),dim=-1))
+
+        return (torch.square(dia_1 - 0.51) + torch.square(dia_2 - 0.51))/2
     
 
 

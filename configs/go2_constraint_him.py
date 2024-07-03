@@ -109,13 +109,13 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 40.}  # [N*m/rad]
-        damping = {'joint': 1.}     # [N*m*s/rad]
+        stiffness = {'joint': 30.}  # [N*m/rad]
+        damping = {'joint': 0.75}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
-        hip_scale_reduction = 1.0
+        hip_scale_reduction = 1
 
         use_filter = True
 
@@ -144,7 +144,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
   
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.34
+        base_height_target = 0.32
         clearance_height_target = -0.20
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
@@ -159,8 +159,9 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             dof_vel = 0.0
             dof_acc = -2.5e-7
             base_height = -10.0
+            #base_height = -10.0
             #base_height = -1.0
-            collision = -1.0
+            #collision = -0.1
             feet_stumble = 0.0
             action_rate = -0.01
             action_smoothness=-0.01
@@ -169,13 +170,15 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             orientation=-0.2
             #powers_dist=-10e-5
             feet_air_time = 0.0
-            #foot_width_equlity = -1
+            foot_width_equlity = -1
             #foot_width_cons = -0.1
-            #hip_pos = -0.1
+            #hip_pos = -0.005
             # phase_contact = -0.1
             # phase_foot_clearance = -1
             #foot_swing_clearance = -0.01
             foot_regular = -0.05
+            #foot_dia_enforce = -0.1
+            vertical_contact = -0.001
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -243,7 +246,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #phase_foot_min_height = 0.1
             #foot_slide = 0.1
             #stumble = 0.1
-            #idol_contact = 0.1
+            idol_contact = 0.1
             #phase_foot_clearance = 0.1
             #phase_foot_min_height = 0.1
             #foot_slide = 0.1
@@ -256,6 +259,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #hip_pos = 0.1
             #base_height = 0.1
             #foot_width = 0.1
+            #foot_dia_enforce = 0.1
 
         class d_values:
             pos_limit = 0.0
@@ -264,6 +268,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #trot_contact = 0.1
             #trot_contact = 0.05
             #trot_contact = 1
+            #trot_contact = 5
             trot_contact = 1
             #foot_swing_clearance = 0.01
             #foot_swing_clearance = 0.1
@@ -275,7 +280,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             # phase_foot_min_height = 4
             #foot_slide = 30.0
             #stumble = 0.0
-            #idol_contact = 0.0
+            idol_contact = 0.0
             #phase_foot_min_height = 4
             #phase_foot_clearance = 1
             #foot_slide = 0.05
@@ -285,12 +290,13 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #stand_still = 0.0
             #powers_dist = 1
             #foot_width_equlity = 0.01
-            #hip_pos = 0.5
+            #hip_pos = 0.0
             #base_height = 0.0
             #foot_width = 0.0
+            #foot_dia_enforce = -1.0
  
     class cost:
-        num_costs = 4
+        num_costs = 5
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -322,7 +328,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 4
+        num_costs = 5
 
         teacher_act = True
         imi_flag = True
