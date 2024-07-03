@@ -339,7 +339,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticMixedBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 6000
+        max_iterations = 10000
         num_steps_per_env = 24
         resume = False
         resume_path = ''

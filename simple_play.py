@@ -63,7 +63,7 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_10000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)
@@ -107,7 +107,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 1
+        env.commands[:,0] = -0.7
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
