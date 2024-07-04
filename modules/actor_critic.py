@@ -299,13 +299,23 @@ class MixedMlpBarlowTwinsActor(nn.Module):
                  num_actions,
                  activation) -> None:
         super(MixedMlpBarlowTwinsActor,self).__init__()
+        # self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
+        #                          input_dims=num_prop*num_hist,
+        #                          out_dims=latent_dim+7,
+        #                          hidden_dims=mlp_encoder_dims))
+
+        # self.actor = MixedMlp(input_size=num_prop,
+        #                       latent_size=latent_dim+7,
+        #                       hidden_size=64,
+        #                       num_actions=num_actions,
+        #                       num_experts=8)
         self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
-                                 out_dims=latent_dim+7,
+                                 out_dims=latent_dim+3,
                                  hidden_dims=mlp_encoder_dims))
 
         self.actor = MixedMlp(input_size=num_prop,
-                              latent_size=latent_dim+7,
+                              latent_size=latent_dim+3,
                               hidden_size=64,
                               num_actions=num_actions,
                               num_experts=8)
@@ -333,8 +343,8 @@ class MixedMlpBarlowTwinsActor(nn.Module):
         b = obs.size()[0]
         obs_hist = obs_hist[:,5:,:].view(b,-1)
         predicted = self.mlp_encoder(obs_hist)
-        hist_latent = predicted[:,7:]
-        priv_latent = predicted[:,:7]
+        hist_latent = predicted[:,3:]
+        priv_latent = predicted[:,:3]
 
         obs_latent = self.obs_encoder(obs)
 
@@ -345,7 +355,8 @@ class MixedMlpBarlowTwinsActor(nn.Module):
         off_diag = off_diagonal(c).pow_(2).sum()
 
         priv_loss = F.mse_loss(priv_latent,priv)
-        loss = on_diag + weight*off_diag + 0.01*priv_loss
+        #loss = on_diag + weight*off_diag + 0.01*priv_loss
+        loss = on_diag + weight*off_diag + 0.005*priv_loss
         return loss
     
 class TransMlpBarlowTwinsActor(nn.Module):
@@ -1616,8 +1627,8 @@ class ActorCriticMixedBarlowTwins(nn.Module):
     def imitation_learning_loss(self, obs):
         obs_prop = obs[:, :self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
-        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 7]
-
+        # priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 7]
+        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 3]
         loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
         return loss
     
