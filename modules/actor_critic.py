@@ -98,17 +98,17 @@ class RnnBarlowTwinsActor(nn.Module):
                                                              input_size=num_prop, 
                                                              encoder_dims=rnn_encoder_dims,
                                                              hidden_size=64,
-                                                             output_size=latent_dim+7)
+                                                             output_size=latent_dim+3)
 
-        # self.actor = nn.Sequential(*mlp_factory(activation=activation,
-        #                          input_dims=latent_dim + num_prop + 7,
-        #                          out_dims=num_actions,
-        #                          hidden_dims=actor_dims))
-        self.actor = MixedMlp(input_size=num_prop,
-                              latent_size=latent_dim+7,
-                              hidden_size=128,
-                              num_actions=num_actions,
-                              num_experts=4)
+        self.actor = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=latent_dim + num_prop + 3,
+                                 out_dims=num_actions,
+                                 hidden_dims=actor_dims))
+        # self.actor = MixedMlp(input_size=num_prop,
+        #                       latent_size=latent_dim+3,
+        #                       hidden_size=128,
+        #                       num_actions=num_actions,
+        #                       num_experts=4)
 
         self.obs_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop,
@@ -125,16 +125,16 @@ class RnnBarlowTwinsActor(nn.Module):
             ], dim=1)
         b,_,_ = obs_hist_full.size()
         latents = self.rnn_encoder(obs_hist_full)
-        #actor_input = torch.cat([latents,obs],dim=-1)
-        #mean  = self.actor(actor_input)
-        mean  = self.actor(latents,obs)
+        actor_input = torch.cat([latents,obs],dim=-1)
+        mean  = self.actor(actor_input)
+        #mean  = self.actor(latents,obs)
         return mean
     
     def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
         b = obs.size()[0]
         predicted = self.rnn_encoder(obs_hist)
-        hist_latent = predicted[:,7:]
-        priv_latent = predicted[:,:7]
+        hist_latent = predicted[:,3:]
+        priv_latent = predicted[:,:3]
 
         obs_latent = self.obs_encoder(obs)
 
@@ -145,7 +145,7 @@ class RnnBarlowTwinsActor(nn.Module):
         off_diag = off_diagonal(c).pow_(2).sum()
 
         priv_loss = F.mse_loss(priv_latent,priv)
-        loss = on_diag + weight*off_diag + 0.01*priv_loss
+        loss = on_diag + weight*off_diag + 0.005*priv_loss
         return loss
     
 class RnnBarlowTwinsLipActor(nn.Module):
@@ -227,11 +227,11 @@ class MlpBarlowTwinsActor(nn.Module):
         super(MlpBarlowTwinsActor,self).__init__()
         self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
-                                 out_dims=latent_dim+7,
+                                 out_dims=latent_dim+3,
                                  hidden_dims=mlp_encoder_dims))
 
         self.actor = nn.Sequential(*mlp_factory(activation=activation,
-                                 input_dims=latent_dim + num_prop + 7,
+                                 input_dims=latent_dim + num_prop + 3,
                                  out_dims=num_actions,
                                  hidden_dims=actor_dims))
         
@@ -250,7 +250,7 @@ class MlpBarlowTwinsActor(nn.Module):
             ], dim=1)
         b,_,_ = obs_hist_full.size()
         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
-        latents = self.mlp_encoder(obs_hist_full.view(b,-1))
+        latents = self.mlp_encoder(obs_hist_full[:,5:,:].view(b,-1))
         actor_input = torch.cat([latents,obs],dim=-1)
         mean  = self.actor(actor_input)
         return mean
@@ -271,10 +271,10 @@ class MlpBarlowTwinsActor(nn.Module):
     
     def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
         b = obs.size()[0]
-        # obs_hist = obs_hist[:,5:,:].view(b,-1)
-        predicted = self.mlp_encoder(obs_hist.view(b,-1))
-        hist_latent = predicted[:,7:]
-        priv_latent = predicted[:,:7]
+        obs_hist = obs_hist[:,5:,:].view(b,-1)
+        predicted = self.mlp_encoder(obs_hist)
+        hist_latent = predicted[:,3:]
+        priv_latent = predicted[:,:3]
 
         obs_latent = self.obs_encoder(obs)
 
@@ -285,7 +285,8 @@ class MlpBarlowTwinsActor(nn.Module):
         off_diag = off_diagonal(c).pow_(2).sum()
 
         priv_loss = F.mse_loss(priv_latent,priv)
-        loss = on_diag + weight*off_diag + 0.01*priv_loss
+        #loss = on_diag + weight*off_diag + 0.01*priv_loss
+        loss = on_diag + weight*off_diag + 0.005*priv_loss
         return loss
     
 class MixedMlpBarlowTwinsActor(nn.Module):
@@ -1305,8 +1306,10 @@ class ActorCriticBarlowTwins(nn.Module):
             priv_encoder_output_dim = num_priv_latent
 
         if self.if_scan_encode:
-            print("using scan encoder")
-            scan_encoder_layers = mlp_factory(activation,num_scan,None,scan_encoder_dims,last_act=True)
+            # scan_encoder_layers = mlp_factory(activation,num_scan,None,scan_encoder_dims,last_act=True)
+            # self.scan_encoder = nn.Sequential(*scan_encoder_layers)
+            # self.scan_encoder_output_dim = scan_encoder_dims[-1]
+            scan_encoder_layers = mlp_factory(activation,num_scan,scan_encoder_dims[-1],scan_encoder_dims[:-1],last_act=False)
             self.scan_encoder = nn.Sequential(*scan_encoder_layers)
             self.scan_encoder_output_dim = scan_encoder_dims[-1]
         else:
@@ -1314,7 +1317,7 @@ class ActorCriticBarlowTwins(nn.Module):
             self.scan_encoder = nn.Identity()
             self.scan_encoder_output_dim = num_scan
 
-        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist, 32)
+        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist, 16)
 
         # self.actor_teacher_backbone = RnnBarlowTwinsActor(num_prop=num_prop,
         #                               num_actions=num_actions,
@@ -1327,7 +1330,7 @@ class ActorCriticBarlowTwins(nn.Module):
         #                               rnn_encoder_dims=[128])
         # #MlpBarlowTwinsActor
         self.actor_teacher_backbone = MlpBarlowTwinsActor(num_prop=num_prop,
-                                      num_hist=10,
+                                      num_hist=5,
                                       num_actions=num_actions,
                                       actor_dims=[512,256,128],
                                       mlp_encoder_dims=[512,256,128],
@@ -1337,11 +1340,11 @@ class ActorCriticBarlowTwins(nn.Module):
         print(self.actor_teacher_backbone)
 
         # Value function
-        critic_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+32,1,critic_hidden_dims,last_act=False)
+        critic_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+16,1,critic_hidden_dims,last_act=False)
         self.critic = nn.Sequential(*critic_layers)
 
         # cost function
-        cost_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+32,cost_dims,critic_hidden_dims,last_act=False)
+        cost_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+16,cost_dims,critic_hidden_dims,last_act=False)
         cost_layers.append(nn.Softplus())
         self.cost = nn.Sequential(*cost_layers)
 
@@ -1439,7 +1442,7 @@ class ActorCriticBarlowTwins(nn.Module):
     def imitation_learning_loss(self, obs):
         obs_prop = obs[:, :self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
-        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 7]
+        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 3]
 
         loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
         return loss
@@ -2208,7 +2211,7 @@ class ActorCriticRnnBarlowTwins(nn.Module):
     def imitation_learning_loss(self, obs):
         obs_prop = obs[:, :self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
-        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 7]
+        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 3]
 
         loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
         return loss

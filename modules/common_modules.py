@@ -99,7 +99,7 @@ class RnnBarlowTwinsStateHistoryEncoder(nn.Module):
         self.final_layer = nn.Linear(hidden_size,output_size)
         
     def forward(self,obs):
-        h_0 = torch.zeros(2,obs.size(0),self.hidden_size,device=obs.device).requires_grad_()
+        h_0 = torch.zeros(2,obs.size(0),self.hidden_size,device=obs.device).requires_grad_().half()
         obs = self.encoder(obs)
         out, h_n = self.rnn(obs,h_0)
         latent = self.final_layer(out[:,-1,:])

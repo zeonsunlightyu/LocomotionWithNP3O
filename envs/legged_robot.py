@@ -1607,10 +1607,8 @@ class LeggedRobot(BaseTask):
 
     def _cost_base_height(self):
         # Penalize base height away from target
-        # base_height = self._get_base_heights()
-        # return torch.square(base_height - self.cfg.rewards.base_height_target)
         base_height = self._get_base_heights()
-        return torch.square(base_height - self.cfg.rewards.base_height_target)
+        return 1.*(torch.abs(base_height) < self.cfg.rewards.base_height_target)
     
     def _cost_feet_air_time(self):
         # Reward long steps
@@ -1695,41 +1693,6 @@ class LeggedRobot(BaseTask):
         rew_contact_force = torch.mean(contact_filt * foot_velocities, dim=1)
         return rew_contact_force
     
-    def _reward_raibert_heuristic(self):
-        cur_footsteps_translated = self.foot_positions - self.base_pos.unsqueeze(1)
-        footsteps_in_body_frame = torch.zeros(self.num_envs, 4, 3, device=self.device)
-        for i in range(4):
-            footsteps_in_body_frame[:, i, :] = quat_apply_yaw(quat_conjugate(self.base_quat),
-                                                              cur_footsteps_translated[:, i, :])
-
-        # nominal positions: [FR, FL, RR, RL]
-        desired_stance_width = 0.3
-        desired_ys_nom = torch.tensor([desired_stance_width / 2,  -desired_stance_width / 2, desired_stance_width / 2, -desired_stance_width / 2], device=self.env.device).unsqueeze(0)
-
-        desired_stance_length = 0.45
-        desired_xs_nom = torch.tensor([desired_stance_length / 2,  desired_stance_length / 2, -desired_stance_length / 2, -desired_stance_length / 2], device=self.env.device).unsqueeze(0)
-
-        # raibert offsets
-        phases = torch.abs(1.0 - (self.foot_indices * 2.0)) * 1.0 - 0.5
-        frequencies = 2.0
-        x_vel_des = self.commands[:, 0:1]
-        yaw_vel_des = self.commands[:, 2:3]
-        y_vel_des = yaw_vel_des * desired_stance_length / 2
-        desired_ys_offset = phases * y_vel_des * (0.5 / frequencies.unsqueeze(1))
-        desired_ys_offset[:, 2:4] *= -1
-        desired_xs_offset = phases * x_vel_des * (0.5 / frequencies.unsqueeze(1))
-
-        desired_ys_nom = desired_ys_nom + desired_ys_offset
-        desired_xs_nom = desired_xs_nom + desired_xs_offset
-
-        desired_footsteps_body_frame = torch.cat((desired_xs_nom.unsqueeze(2), desired_ys_nom.unsqueeze(2)), dim=2)
-
-        err_raibert_heuristic = torch.abs(desired_footsteps_body_frame - footsteps_in_body_frame[:, :, 0:2])
-
-        reward = torch.sum(torch.square(err_raibert_heuristic), dim=(1, 2))
-
-        return reward
-    
     def _cost_foot_clearance(self):
         cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
         footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
@@ -1774,7 +1737,7 @@ class LeggedRobot(BaseTask):
             footvel_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footvel_translated[:, i, :])
         foot_leteral_vel = torch.sqrt(torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)).view(self.num_envs, -1)
         
-        cost_slide = torch.sum(self.contact_filt * foot_leteral_vel, dim=1)
+        cost_slide = 0.1*torch.sum(self.contact_filt * foot_leteral_vel, dim=1)
         return cost_slide
     
     def _cost_trot_contact(self):
@@ -1854,6 +1817,20 @@ class LeggedRobot(BaseTask):
         dia_2 = torch.sqrt(torch.sum(torch.square(footpos_in_body_frame[:,1,:] - footpos_in_body_frame[:,3,:]),dim=-1))
 
         return (torch.square(dia_1 - 0.51) + torch.square(dia_2 - 0.51))/2
+    
+    def _cost_foot_regular(self):
+        cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        cur_footvel_translated = self.feet_vel - self.root_states[:, 7:10].unsqueeze(1)
+        footvel_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
+        for i in range(len(self.feet_indices)):
+            footpos_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footpos_translated[:, i, :])
+            footvel_in_body_frame[:, i, :] = quat_rotate_inverse(self.base_quat, cur_footvel_translated[:, i, :])
+        
+        #height_error = torch.square(footpos_in_body_frame[:, :, 2] - self.cfg.rewards.clearance_height_target).view(self.num_envs, -1)
+        height_error = torch.clamp(torch.exp(footpos_in_body_frame[:, :, 2]/(0.025*self.cfg.rewards.base_height_target)).view(self.num_envs, -1),0,1)
+        foot_leteral_vel = torch.sqrt(torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)).view(self.num_envs, -1)
+        return torch.sum(height_error * foot_leteral_vel, dim=1)
     
 
 
