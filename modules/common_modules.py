@@ -137,7 +137,7 @@ class AutoEncoder(nn.Module):
         return out
 
 class StateHistoryEncoder(nn.Module):
-    def __init__(self, activation_fn, input_size, tsteps, output_size, tanh_encoder_output=False):
+    def __init__(self, activation_fn, input_size, tsteps, output_size, tanh_encoder_output=False,final_act=True):
         # self.device = device
         super(StateHistoryEncoder, self).__init__()
         self.activation_fn = activation_fn
@@ -168,9 +168,12 @@ class StateHistoryEncoder(nn.Module):
         else:
             raise(ValueError("tsteps must be 10, 20 or 50"))
 
-        self.linear_output = nn.Sequential(
+        if final_act:
+            self.linear_output = nn.Sequential(
                 nn.Linear(channel_size * 3, output_size), self.activation_fn
                 )
+        else:
+            self.linear_output = nn.Sequential(nn.Linear(channel_size * 3, output_size))
 
     def forward(self, obs):
         # nd * T * n_proprio

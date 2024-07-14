@@ -1590,7 +1590,7 @@ class LeggedRobot(BaseTask):
     def _cost_acc_smoothness(self):
         acc = (self.last_dof_vel - self.dof_vel) / self.dt
         acc_limit = self.dof_vel_limits/(2.*self.dt)
-        return torch.mean(torch.max(torch.zeros_like(acc),torch.abs(acc) - acc_limit),dim=1)
+        return 0.1*torch.mean(torch.max(torch.zeros_like(acc),torch.abs(acc) - acc_limit),dim=1)
     
     def _cost_collision(self):
         return  1.*(torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1) > 0.0)
@@ -1782,9 +1782,10 @@ class LeggedRobot(BaseTask):
         width_1 = torch.abs(footpos_in_body_frame[:,0,1] - footpos_in_body_frame[:,1,1])
         width_2 = torch.abs(footpos_in_body_frame[:,2,1] - footpos_in_body_frame[:,3,1])
 
-        return 1.*(torch.abs(self.commands[:,1]) == 0)*(1.*(width_1 < 0.25) + 1.*(width_2 < 0.25))
-        # flag = 1.*(torch.abs(self.commands[:,1]) == 0)
-        # return flag*(torch.square(width_1 - 0.28) + torch.square(width_2 - 0.28))/2.0 
+        less_width = (1.*(width_1 < 0.28) + 1.*(width_2 < 0.28))/2
+        greater_width = (1.*(width_1 > 0.31) + 1.*(width_2 < 0.31))/2
+
+        return (less_width + greater_width)/2
 
     def _cost_foot_width_equlity(self):
         cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
@@ -1806,6 +1807,10 @@ class LeggedRobot(BaseTask):
         sum_contact_filt_flag = 1.*(torch.sum(contact_filt,dim=-1) < 4)
         idol_flag = 1.*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
         return idol_flag*sum_contact_filt_flag
+    
+    def _cost_idol_hip(self):
+        idol_flag = 1.*(torch.norm(self.commands[:, :2], dim=1) < 0.1)
+        return idol_flag*torch.sum(torch.square(self.dof_pos[:, [0, 3, 6, 9]] - 0.0),dim=-1)
     
     def _cost_foot_dia_enforce(self):
         cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
@@ -1832,6 +1837,10 @@ class LeggedRobot(BaseTask):
         foot_leteral_vel = torch.sqrt(torch.sum(torch.square(footvel_in_body_frame[:, :, :2]), dim=2)).view(self.num_envs, -1)
         return torch.sum(height_error * foot_leteral_vel, dim=1)
     
+    def _cost_foot_mirror(self):
+        diff1 = torch.sum(torch.square(self.dof_pos[:,[0,1,2]] - self.dof_pos[:,[9,10,11]]),dim=-1)
+        diff2 = torch.sum(torch.square(self.dof_pos[:,[3,4,5]] - self.dof_pos[:,[6,7,8]]),dim=-1)
+        return 0.1*(diff1 + diff2)
 
 
 

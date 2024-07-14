@@ -63,11 +63,11 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_6000.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_15000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)
-    policy.save_torch_jit_policy('model.pt',env.device)
+    policy.save_torch_jit_policy('model_him_phase.pt',env.device)
 
     # clear images under frames folder
     # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')

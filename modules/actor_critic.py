@@ -225,9 +225,9 @@ class MlpBarlowTwinsActor(nn.Module):
                  num_actions,
                  activation) -> None:
         super(MlpBarlowTwinsActor,self).__init__()
-        self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
+        self.mlp_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
-                                 out_dims=latent_dim+3,
+                                 out_dims=latent_dim,
                                  hidden_dims=mlp_encoder_dims))
 
         self.actor = nn.Sequential(*mlp_factory(activation=activation,
@@ -235,12 +235,19 @@ class MlpBarlowTwinsActor(nn.Module):
                                  out_dims=num_actions,
                                  hidden_dims=actor_dims))
         
-        self.obs_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
+        self.obs_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop,
                                  out_dims=latent_dim,
                                  hidden_dims=obs_encoder_dims))
         
-        self.bn = nn.BatchNorm1d(latent_dim,affine=False)
+        self.projector = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=latent_dim,
+                                 out_dims=32,
+                                 hidden_dims=[64]))
+        
+        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+        
+        self.bn = nn.BatchNorm1d(32,affine=False)
 
     def forward(self,obs,obs_hist):
         # with torch.no_grad():
@@ -250,33 +257,32 @@ class MlpBarlowTwinsActor(nn.Module):
             ], dim=1)
         b,_,_ = obs_hist_full.size()
         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
-        latents = self.mlp_encoder(obs_hist_full[:,5:,:].view(b,-1))
-        actor_input = torch.cat([latents,obs],dim=-1)
+        with torch.no_grad():
+            latents = self.mlp_encoder(obs_hist_full[:,5:,:].view(b,-1))
+            predicted_vel = self.history_encoder(obs_hist_full)
+
+        actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
         mean  = self.actor(actor_input)
         return mean
     
-    # def BarlowTwinsLoss(self,obs,obs_hist,weight):
-    #     b = obs.size()[0]
-    #     obs_hist = obs_hist[:,5:,:].view(b,-1)
-    #     hist_latent = self.mlp_encoder(obs_hist)
-    #     obs_latent = self.obs_encoder(obs)
-
-    #     c = self.bn(hist_latent).T @ self.bn(obs_latent)
-    #     c.div_(b)
-
-    #     on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-    #     off_diag = off_diagonal(c).pow_(2).sum()
-    #     loss = on_diag + weight*off_diag
-    #     return loss
-    
     def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
+        obs = obs.detach()
+        obs_hist = obs_hist.detach()
+        
         b = obs.size()[0]
-        obs_hist = obs_hist[:,5:,:].view(b,-1)
-        predicted = self.mlp_encoder(obs_hist)
-        hist_latent = predicted[:,3:]
-        priv_latent = predicted[:,:3]
 
+        predicted_vel = self.history_encoder(obs_hist)
+        obs_hist = obs_hist[:,5:,:].view(b,-1)
+
+        hist_latent = self.mlp_encoder(obs_hist)
         obs_latent = self.obs_encoder(obs)
+
+        #hist_latent = predicted[:,3:]
+        #priv_latent = predicted[:,:3]
+        obs_latent = self.obs_encoder(obs)
+
+        hist_latent = self.projector(hist_latent) 
+        obs_latent = self.projector(obs_latent)
 
         c = self.bn(hist_latent).T @ self.bn(obs_latent)
         c.div_(b)
@@ -284,9 +290,10 @@ class MlpBarlowTwinsActor(nn.Module):
         on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(c).pow_(2).sum()
 
-        priv_loss = F.mse_loss(priv_latent,priv)
-        #loss = on_diag + weight*off_diag + 0.01*priv_loss
-        loss = on_diag + weight*off_diag + 0.005*priv_loss
+        priv_loss = F.mse_loss(predicted_vel,0.01*priv)
+
+        loss = on_diag + weight*off_diag + priv_loss
+        
         return loss
     
 class MixedMlpBarlowTwinsActor(nn.Module):
@@ -300,17 +307,8 @@ class MixedMlpBarlowTwinsActor(nn.Module):
                  num_actions,
                  activation) -> None:
         super(MixedMlpBarlowTwinsActor,self).__init__()
-        # self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
-        #                          input_dims=num_prop*num_hist,
-        #                          out_dims=latent_dim+7,
-        #                          hidden_dims=mlp_encoder_dims))
-
-        # self.actor = MixedMlp(input_size=num_prop,
-        #                       latent_size=latent_dim+7,
-        #                       hidden_size=64,
-        #                       num_actions=num_actions,
-        #                       num_experts=8)
-        self.mlp_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
+      
+        self.mlp_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
                                  out_dims=latent_dim+3,
                                  hidden_dims=mlp_encoder_dims))
@@ -321,12 +319,19 @@ class MixedMlpBarlowTwinsActor(nn.Module):
                               num_actions=num_actions,
                               num_experts=8)
         
-        self.obs_encoder = nn.Sequential(*mlp_layernorm_factory(activation=activation,
+        self.obs_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop,
                                  out_dims=latent_dim,
                                  hidden_dims=obs_encoder_dims))
         
-        self.bn = nn.BatchNorm1d(latent_dim,affine=False)
+        self.projector = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=latent_dim,
+                                 out_dims=32,
+                                 hidden_dims=[64]))
+        
+        # self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+        
+        self.bn = nn.BatchNorm1d(32,affine=False)
 
     def forward(self,obs,obs_hist):
         # with torch.no_grad():
@@ -335,19 +340,31 @@ class MixedMlpBarlowTwinsActor(nn.Module):
                 obs.unsqueeze(1)
             ], dim=1)
         b,_,_ = obs_hist_full.size()
-        obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
-        latents = self.mlp_encoder(obs_hist_full)
-        mean  = self.actor(latents,obs)
+        # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+        with torch.no_grad():
+            latents = self.mlp_encoder(obs_hist_full[:,5:,:].view(b,-1))
+            # predicted_vel = self.history_encoder(obs_hist_full)
+
+        #latent_input = torch.cat([latents.detach(),predicted_vel.detach()],dim=-1)
+        #latent_input = torch.cat([latents.detach()],dim=-1)
+        mean  = self.actor(latents.detach(),obs)
         return mean
     
     def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
         b = obs.size()[0]
+
+        #predicted_vel = self.history_encoder(obs_hist)
         obs_hist = obs_hist[:,5:,:].view(b,-1)
+
         predicted = self.mlp_encoder(obs_hist)
+        obs_latent = self.obs_encoder(obs)
+
         hist_latent = predicted[:,3:]
         priv_latent = predicted[:,:3]
-
         obs_latent = self.obs_encoder(obs)
+
+        hist_latent = self.projector(hist_latent) 
+        obs_latent = self.projector(obs_latent)
 
         c = self.bn(hist_latent).T @ self.bn(obs_latent)
         c.div_(b)
@@ -355,9 +372,10 @@ class MixedMlpBarlowTwinsActor(nn.Module):
         on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(c).pow_(2).sum()
 
-        priv_loss = F.mse_loss(priv_latent,priv)
-        #loss = on_diag + weight*off_diag + 0.01*priv_loss
-        loss = on_diag + weight*off_diag + 0.005*priv_loss
+        priv_loss = F.mse_loss(priv_latent,0.01*priv)
+
+        loss = on_diag + weight*off_diag + priv_loss
+        
         return loss
     
 class TransMlpBarlowTwinsActor(nn.Module):
@@ -1319,24 +1337,23 @@ class ActorCriticBarlowTwins(nn.Module):
 
         self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist, 16)
 
-        # self.actor_teacher_backbone = RnnBarlowTwinsActor(num_prop=num_prop,
+        # #MlpBarlowTwinsActor
+        # self.actor_teacher_backbone = MlpBarlowTwinsActor(num_prop=num_prop,
+        #                               num_hist=5,
         #                               num_actions=num_actions,
         #                               actor_dims=[512,256,128],
-        #                               encoder_output_dim=32,
-        #                               hidden_dim=128,
+        #                               mlp_encoder_dims=[512,256,128],
         #                               activation=activation,
-        #                               latent_dim=64,
-        #                               obs_encoder_dims=[256,128],
-        #                               rnn_encoder_dims=[128])
-        # #MlpBarlowTwinsActor
+        #                               latent_dim=16,
+        #                               obs_encoder_dims=[256,128])
         self.actor_teacher_backbone = MlpBarlowTwinsActor(num_prop=num_prop,
-                                      num_hist=5,
-                                      num_actions=num_actions,
-                                      actor_dims=[512,256,128],
-                                      mlp_encoder_dims=[512,256,128],
-                                      activation=activation,
-                                      latent_dim=16,
-                                      obs_encoder_dims=[256,128])
+                                num_hist=5,
+                                num_actions=num_actions,
+                                actor_dims=[512,256,128],
+                                mlp_encoder_dims=[128,64],
+                                activation=activation,
+                                latent_dim=16,
+                                obs_encoder_dims=[128,64])
         print(self.actor_teacher_backbone)
 
         # Value function
@@ -1521,10 +1538,10 @@ class ActorCriticMixedBarlowTwins(nn.Module):
                                       num_hist=5,
                                       num_actions=num_actions,
                                       actor_dims=[512,256,128],
-                                      mlp_encoder_dims=[512,256,128],
+                                      mlp_encoder_dims=[128,64],
                                       activation=activation,
                                       latent_dim=16,
-                                      obs_encoder_dims=[256,128])
+                                      obs_encoder_dims=[128,64])
         print(self.actor_teacher_backbone)
 
         # Value function

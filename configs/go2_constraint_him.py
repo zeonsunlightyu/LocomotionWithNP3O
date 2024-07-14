@@ -41,7 +41,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.42] # x,y,z [m]
+        pos = [0.0, 0.0, 0.34] # x,y,z [m]
         """
           unitree go2 sdk order:
                -0.1 <-3 FR_hip_joint 0 -> 0.0
@@ -109,8 +109,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 30.}  # [N*m/rad]
-        damping = {'joint': 0.75}     # [N*m*s/rad]
+        stiffness = {'joint': 40.}  # [N*m/rad]
+        damping = {'joint': 1.0}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
@@ -273,7 +273,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             torque_limit = 0.1
             dof_vel_limits = 0.1
             trot_contact = 0.1
-            base_height = 1
+            base_height = 1.0
             #collision = 0.1
             foot_regular = 0.1
             #foot_swing_clearance = 0.1
@@ -288,15 +288,17 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #phase_foot_min_height = 0.1
             foot_slide = 0.1
             #feet_air_time = 0.1
-            # acc_smoothness = 0.1
+            acc_smoothness = 0.1
             #collision = 0.1
-            #stand_still = 0.1
+            #idol_hip = 0.1
             #powers_dist = 0.1
             #foot_width_equlity = 0.1
-            #hip_pos = 0.1
+            #hip_pos = 1
             #base_height = 0.1
             #foot_width = 0.1
-            foot_dia_enforce = 0.1
+            #foot_dia_enforce = 0.1
+            #foot_mirror = 0.1
+            # foot_width = 1
 
         class d_values:
             pos_limit = 0.0
@@ -307,7 +309,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #trot_contact = 0.05
             #trot_contact = 1
             #trot_contact = 5
-            trot_contact = 1
+            trot_contact = 2
             #collision = 0.0
             foot_regular = 0.0
             #foot_swing_clearance = 0.01
@@ -325,15 +327,17 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #phase_foot_clearance = 1
             foot_slide = 0.05
             #feet_air_time = 0.0
-            # acc_smoothness = 0.0
+            acc_smoothness = 1.0
             #collision = 0.0
-            #stand_still = 0.0
+            #idol_hip = 0.0
             #powers_dist = 1
             #foot_width_equlity = 0.01
-            #hip_pos = 0.0
+            #hip_pos = 0.1
             #base_height = 0.0
-            #foot_width = 0.0
-            foot_dia_enforce = 0.05
+            #foot_width = 1
+            #foot_dia_enforce = 0.05
+            #foot_mirror = 0.0
+            # foot_width = 1.0
  
     class cost:
         num_costs = 8
@@ -346,8 +350,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
 class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
-        learning_rate = 5e-4
-        max_grad_norm = 0.01
+        learning_rate = 1e-3
+        max_grad_norm = 1
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
         cost_value_loss_coef = 1
