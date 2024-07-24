@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -49,7 +50,7 @@ class NP3O:
 
         if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.imi_flag:
             self.imi_flag = True
-            self.imitation_optimizer = optim.Adam(self.actor_critic.parameters(), lr=5e-4)
+            self.imitation_optimizer = optim.Adam(self.actor_critic.parameters(), lr=1e-3)
             print('running with imi loss on')
         else:
             self.imi_flag = False
@@ -188,6 +189,8 @@ class NP3O:
         mean_viol_loss = 0
         mean_surrogate_loss = 0
         mean_imitation_loss = 0
+        obs_batch_max = -math.inf
+        obs_batch_min = math.inf
         
         if self.actor_critic.is_recurrent:
             generator = self.storage.reccurent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -195,6 +198,7 @@ class NP3O:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, \
             old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch, target_cost_values_batch,cost_advantages_batch,cost_returns_batch,cost_violation_batch in generator:
+                
 
                 self.actor_critic.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0]) # match distribution dimension
                 actions_log_prob_batch = self.actor_critic.get_actions_log_prob(actions_batch)
@@ -257,7 +261,7 @@ class NP3O:
                     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
                     self.imitation_optimizer.zero_grad()
                     imitation_loss.backward()
-                    nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.01)
+                    nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 1)
                     self.imitation_optimizer.step()
 
                     mean_imitation_loss += imitation_loss.item()
@@ -274,6 +278,13 @@ class NP3O:
                 mean_cost_value_loss += cost_value_loss.item()
                 mean_viol_loss += viol_loss.item()
                 mean_surrogate_loss += surrogate_loss.item()
+
+                current_max = obs_batch.max().item()
+                current_min = obs_batch.min().item()
+                if current_max > obs_batch_max:
+                    obs_batch_max = current_max
+                if current_min < obs_batch_min:
+                    obs_batch_min = current_min
                 # if self.imi_flag:
                 #     mean_imitation_loss += imitation_loss.item()
                 # else:
@@ -288,7 +299,7 @@ class NP3O:
 
         self.storage.clear()
    
-        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss,mean_imitation_loss
+        return mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss,mean_imitation_loss,obs_batch_min,obs_batch_max
     
     def update_depth_actor(self, actions_student_batch, actions_teacher_batch):
         if self.if_depth:

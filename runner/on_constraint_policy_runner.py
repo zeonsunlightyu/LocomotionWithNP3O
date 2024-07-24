@@ -171,7 +171,7 @@ class OnConstraintPolicyRunner:
             #update k value for better expolration
             k_value = self.alg.update_k_value(it)
             
-            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_imitation_loss = self.alg.update()
+            mean_value_loss,mean_cost_value_loss,mean_viol_loss,mean_surrogate_loss, mean_imitation_loss,obs_batch_min,obs_batch_max = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -217,6 +217,9 @@ class OnConstraintPolicyRunner:
         self.writer.add_scalar('Perf/total_fps', fps, locs['it'])
         self.writer.add_scalar('Perf/collection time', locs['collection_time'], locs['it'])
         self.writer.add_scalar('Perf/learning_time', locs['learn_time'], locs['it'])
+
+        self.writer.add_scalar('Data/obs_max', locs['obs_batch_max'], locs['it'])
+        self.writer.add_scalar('Data/obs_min', locs['obs_batch_min'], locs['it'])
         if len(locs['rewbuffer']) > 0:
             self.writer.add_scalar('Train/mean_reward', statistics.mean(locs['rewbuffer']), locs['it'])
             self.writer.add_scalar('Train/mean_episode_length', statistics.mean(locs['lenbuffer']), locs['it'])

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 import torch.nn.functional as F 
-from modules.common_modules import AutoEncoder, BetaVAE, MixedLipMlp, MixedMlp, RnnBarlowTwinsStateHistoryEncoder, RnnStateHistoryEncoder, StateHistoryEncoder, get_activation, mlp_factory, mlp_layernorm_factory
+from modules.common_modules import MAE, VQVAE, VQVAE_EMA, AutoEncoder, BetaVAE, MixedLipMlp, MixedMlp, RnnBarlowTwinsStateHistoryEncoder, RnnDoubleHeadEncoder, RnnEncoder, RnnStateHistoryEncoder, StateHistoryEncoder, get_activation, mlp_factory, mlp_layernorm_factory
 from modules.transformer_modules import ActionCausalTransformer, StateCausalClsTransformer, StateCausalHeadlessTransformer, StateCausalTransformer
 class Config:
     def __init__(self):
@@ -227,7 +227,7 @@ class MlpBarlowTwinsActor(nn.Module):
         super(MlpBarlowTwinsActor,self).__init__()
         self.mlp_encoder = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
-                                 out_dims=latent_dim,
+                                 out_dims=latent_dim + 3,
                                  hidden_dims=mlp_encoder_dims))
 
         self.actor = nn.Sequential(*mlp_factory(activation=activation,
@@ -242,12 +242,12 @@ class MlpBarlowTwinsActor(nn.Module):
         
         self.projector = nn.Sequential(*mlp_factory(activation=activation,
                                  input_dims=latent_dim,
-                                 out_dims=32,
+                                 out_dims=16,
                                  hidden_dims=[64]))
         
-        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+        # self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
         
-        self.bn = nn.BatchNorm1d(32,affine=False)
+        self.bn = nn.BatchNorm1d(16,affine=False)
 
     def forward(self,obs,obs_hist):
         # with torch.no_grad():
@@ -259,9 +259,8 @@ class MlpBarlowTwinsActor(nn.Module):
         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
         with torch.no_grad():
             latents = self.mlp_encoder(obs_hist_full[:,5:,:].view(b,-1))
-            predicted_vel = self.history_encoder(obs_hist_full)
-
-        actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+    
+        actor_input = torch.cat([latents.detach(),obs.detach()],dim=-1)
         mean  = self.actor(actor_input)
         return mean
     
@@ -271,14 +270,17 @@ class MlpBarlowTwinsActor(nn.Module):
         
         b = obs.size()[0]
 
-        predicted_vel = self.history_encoder(obs_hist)
+        # predicted_vel = self.history_encoder(torch.cat([
+        #         obs_hist[:,1:,:],
+        #         obs.unsqueeze(1)
+        #     ], dim=1))
         obs_hist = obs_hist[:,5:,:].view(b,-1)
 
-        hist_latent = self.mlp_encoder(obs_hist)
+        predicted = self.mlp_encoder(obs_hist)
         obs_latent = self.obs_encoder(obs)
 
-        #hist_latent = predicted[:,3:]
-        #priv_latent = predicted[:,:3]
+        hist_latent = predicted[:,3:]
+        priv_latent = predicted[:,:3]
         obs_latent = self.obs_encoder(obs)
 
         hist_latent = self.projector(hist_latent) 
@@ -290,11 +292,437 @@ class MlpBarlowTwinsActor(nn.Module):
         on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(c).pow_(2).sum()
 
-        priv_loss = F.mse_loss(predicted_vel,0.01*priv)
+        priv_loss = F.mse_loss(priv_latent,priv)
 
         loss = on_diag + weight*off_diag + priv_loss
         
         return loss
+    
+class MlpBVAEActor(nn.Module):
+    def __init__(self,
+                 num_prop,
+                 num_hist,
+                 obs_encoder_dims,
+                 mlp_encoder_dims,
+                 actor_dims,
+                 latent_dim,
+                 num_actions,
+                 activation) -> None:
+        super(MlpBVAEActor,self).__init__()
+
+
+        self.actor = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=latent_dim + num_prop +3,
+                                 out_dims=num_actions,
+                                 hidden_dims=actor_dims))
+       
+        self.Vae = BetaVAE(in_dim=num_hist*num_prop,beta=0.001)
+
+        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+
+    def forward(self,obs,obs_hist):
+        # with torch.no_grad():
+        obs_hist_full = torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1)
+        b,_,_ = obs_hist_full.size()
+        # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+        with torch.no_grad():
+            latents = self.Vae.get_latent(obs_hist_full[:,5:,:].view(b,-1))
+            predicted_vel = self.history_encoder(obs_hist_full)
+        actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+        mean  = self.actor(actor_input)
+        return mean
+    
+    def VaeLoss(self,obs,obs_hist,priv):
+        obs = obs.detach()
+        obs_hist = obs_hist.detach()
+        
+        b = obs.size()[0]
+
+        predicted_vel = self.history_encoder(torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1))
+        # obs_hist = obs_hist[:,5:,:].view(b,-1)
+        recon,z, mu, log_var  = self.Vae(obs_hist[:,5,:].view(b,-1))
+        recon_loss,kl_loss = self.Vae.loss_fn(obs,recon,mu,log_var) 
+        mseloss = F.mse_loss(predicted_vel,0.01*priv)
+
+        return recon_loss,kl_loss,mseloss
+    
+class MlpVQVAEActor(nn.Module):
+    def __init__(self,
+                 num_prop,
+                 num_hist,
+                 obs_encoder_dims,
+                 mlp_encoder_dims,
+                 actor_dims,
+                 latent_dim,
+                 num_actions,
+                 activation) -> None:
+        super(MlpVQVAEActor,self).__init__()
+
+
+        self.actor = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=latent_dim + num_prop +3,
+                                 out_dims=num_actions,
+                                 hidden_dims=actor_dims))
+       
+        self.Vae = VQVAE(in_dim=num_hist*num_prop)
+        # self.Vae = VQVAE_EMA(in_dim=num_hist*num_prop)
+
+    def forward(self,obs,obs_hist):
+        # with torch.no_grad():
+        obs_hist_full = torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1)
+        b,_,_ = obs_hist_full.size()
+        # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+        with torch.no_grad():
+            latents,predicted_vel = self.Vae.get_latent(obs_hist_full[:,5:,:].view(b,-1))
+
+        actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+        mean  = self.actor(actor_input)
+        return mean
+    
+    def VaeLoss(self,obs,obs_hist,priv):
+        obs = obs.detach()
+        obs_hist = obs_hist.detach()
+        
+        b = obs.size()[0]
+
+        # obs_hist = obs_hist[:,5:,:].view(b,-1)
+        # recon,quantize,z,predicted_vel,onehot_encode = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
+        # loss = self.Vae.loss_fn(obs,recon,quantize,z,onehot_encode) 
+        recon,quantize,z,predicted_vel = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
+        loss = self.Vae.loss_fn(obs,recon,quantize,z) 
+        mseloss = F.mse_loss(predicted_vel,priv)
+        loss = loss + mseloss
+
+        return loss
+
+# class MlpVQVAEActor(nn.Module):
+#     def __init__(self,
+#                  num_prop,
+#                  num_hist,
+#                  obs_encoder_dims,
+#                  mlp_encoder_dims,
+#                  actor_dims,
+#                  latent_dim,
+#                  num_actions,
+#                  activation) -> None:
+#         super(MlpVQVAEActor,self).__init__()
+
+
+#         self.actor = nn.Sequential(*mlp_factory(activation=activation,
+#                                  input_dims=latent_dim + num_prop +3,
+#                                  out_dims=num_actions,
+#                                  hidden_dims=actor_dims))
+       
+#         self.Vae = VQVAE(in_dim=num_hist*num_prop)
+
+#         self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+
+
+#     def forward(self,obs,obs_hist):
+#         # with torch.no_grad():
+#         obs_hist_full = torch.cat([
+#                 obs_hist[:,1:,:],
+#                 obs.unsqueeze(1)
+#             ], dim=1)
+#         b,_,_ = obs_hist_full.size()
+#         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+#         with torch.no_grad():
+#             latents = self.Vae.get_latent(obs_hist_full[:,5:,:].view(b,-1))
+#             predicted_vel = self.history_encoder(obs_hist_full)
+
+#         actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+#         mean  = self.actor(actor_input)
+#         return mean
+    
+#     def VaeLoss(self,obs,obs_hist,priv):
+#         obs = obs.detach()
+#         obs_hist = obs_hist.detach()
+        
+#         b = obs.size()[0]
+
+#         # obs_hist = obs_hist[:,5:,:].view(b,-1)
+#         obs_hist_full = torch.cat([
+#                 obs_hist[:,1:,:],
+#                 obs.unsqueeze(1)
+#             ], dim=1).detach()
+        
+#         recon,quantize,z = self.Vae(obs_hist[:,5:,:].view(b,-1))
+#         predicted_vel = self.history_encoder(obs_hist_full)
+
+#         loss = self.Vae.loss_fn(obs,recon,quantize,z) 
+#         mseloss = F.mse_loss(predicted_vel,priv)
+#         loss = loss + mseloss
+
+#         return loss
+
+class MlpMAEActor(nn.Module):
+    def __init__(self,
+                 num_prop,
+                 num_hist,
+                 obs_encoder_dims,
+                 mlp_encoder_dims,
+                 actor_dims,
+                 latent_dim,
+                 num_actions,
+                 activation) -> None:
+        super(MlpMAEActor,self).__init__()
+
+
+        self.actor = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims=num_prop + 16,
+                                 out_dims=num_actions,
+                                 hidden_dims=actor_dims))
+       
+        self.mae = MAE(in_dim=num_hist*num_prop,latent_dim=16)
+        
+
+    def forward(self,obs,obs_hist):
+        # with torch.no_grad():
+        obs_hist_full = torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1)
+        b,_,_ = obs_hist_full.size()
+        # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+        with torch.no_grad():
+            latents = self.mae.get_latent(obs_hist_full[:,5:,:].view(b,-1))
+        actor_input = torch.cat([latents.detach(),obs.detach()],dim=-1)
+        mean  = self.actor(actor_input)
+        return mean
+    
+    def maeLoss(self,obs,obs_hist,priv):
+        obs = obs.detach()
+        obs_hist = obs_hist.detach()
+        
+        b = obs.size()[0]
+
+        obs_hist = obs_hist[:,5:,:].view(b,-1)
+        recon,recon_est  = self.mae(obs_hist)
+        loss = self.mae.loss_fn(obs_hist,recon,torch.cat([obs,priv],dim=-1),recon_est) 
+
+        return loss
+    
+    
+# class MlpSimSiamActor(nn.Module):
+#     def __init__(self,
+#                  num_prop,
+#                  num_hist,
+#                  obs_encoder_dims,
+#                  mlp_encoder_dims,
+#                  actor_dims,
+#                  latent_dim,
+#                  num_actions,
+#                  activation) -> None:
+#         super(MlpSimSiamActor,self).__init__()
+
+#         self.actor = nn.Sequential(*mlp_factory(activation=activation,
+#                                  input_dims=16 + num_prop + 3,
+#                                  out_dims=num_actions,
+#                                  hidden_dims=actor_dims))
+    
+#         self.encoder = RnnDoubleHeadEncoder(hidden_size=64,input_size=num_prop,output_size=16)
+        
+#         # build a 2-layer predictor
+#         self.predictor = nn.Sequential(nn.Linear(16, 32, bias=False),
+#                                         nn.BatchNorm1d(32),
+#                                         nn.ReLU(inplace=True), # hidden layer
+#                                         nn.Linear(32, 16)) # output layer
+
+#         # self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+
+#         self.criterion = nn.CosineSimilarity(dim=1)
+        
+#     def forward(self,obs,obs_hist):
+#         # with torch.no_grad():
+#         obs_hist_full = torch.cat([
+#                 obs_hist[:,1:,:],
+#                 obs.unsqueeze(1)
+#             ], dim=1)
+#         b,_,_ = obs_hist_full.size()
+#         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+#         with torch.no_grad():
+#             #latents = self.encoder(obs_hist_full[:,5:,:].view(b,-1))
+#             latents,predicted_vel = self.encoder(obs_hist_full[:,5:,:])
+#             # predicted_vel = self.history_encoder(obs_hist_full)
+
+#         actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+#         # actor_input = torch.cat([latents.detach(),obs.detach()],dim=-1)
+#         mean  = self.actor(actor_input)
+#         return mean
+    
+#     def SimSiamLoss(self,obs,obs_hist,priv):
+
+#         obs_hist_full = torch.cat([
+#                 obs_hist[:,1:,:],
+#                 obs.unsqueeze(1)
+#             ], dim=1)
+        
+#         obs = obs.detach()
+#         obs_hist = obs_hist_full.detach()
+        
+#         b = obs.size()[0]
+#         # predicted_vel = self.history_encoder(obs_hist)
+#         # priv_loss = F.mse_loss(predicted_vel,priv)
+
+#         # obs_hist_plus = torch.cat([
+#         #         obs_hist[:,1:,:],
+#         #         obs.unsqueeze(1)
+#         #     ], dim=1)[:,5:,:].view(b,-1)
+        
+#         # obs_hist_post_5 = obs_hist[:,5:,:].view(b,-1)
+#         # obs_hist_pre_5 = obs_hist[:,:5,:].view(b,-1)
+
+#         obs_hist_post_5 = obs_hist[:,5:,:]
+#         obs_hist_pre_5 = obs_hist[:,:5,:]
+
+#         # z1 = self.encoder(obs_hist).detach() # NxCbn
+#         # z2 = self.encoder(obs_hist_plus).detach() # NxC
+
+#         z1,predicted_vel = self.encoder(obs_hist_post_5) # NxC
+#         z2,_ = self.encoder(obs_hist_pre_5) # NxC
+
+#         # z1,predicted_vel = self.encoder(obs_hist)# NxC
+#         # z2,_ = self.encoder(obs.unsqueeze(1)) # NxC
+#         # z1 = self.encoder(obs_hist).detach() # NxC
+#         # z2 = self.encoder(obs.unsqueeze(1)).detach() # NxC
+
+#         p1 = self.predictor(z1) # NxC
+#         p2 = self.predictor(z2) # NxC
+
+#         z1 = z1.detach()
+#         z2 = z2.detach()
+
+#         loss = -(self.criterion(p1, z2).mean() + self.criterion(p2, z1).mean()) * 0.5
+#         priv_loss = F.mse_loss(predicted_vel,priv)
+#         loss = loss + priv_loss
+#         return loss
+    
+class MlpSimSiamActor(nn.Module):
+    def __init__(self,
+                 num_prop,
+                 num_hist,
+                 obs_encoder_dims,
+                 mlp_encoder_dims,
+                 actor_dims,
+                 latent_dim,
+                 num_actions,
+                 activation) -> None:
+        super(MlpSimSiamActor,self).__init__()
+
+        self.actor = nn.Sequential(*mlp_factory(activation=activation,
+                                 input_dims= num_prop + 16 + 3,
+                                 out_dims=num_actions,
+                                 hidden_dims=actor_dims))
+    
+        self.encoder = nn.Sequential(   nn.BatchNorm1d(num_hist*num_prop,affine=False),
+                                        nn.Linear(num_hist*num_prop, 128),
+                                        nn.BatchNorm1d(128),
+                                        nn.ELU(inplace=True),
+                                        nn.Linear(128, 64),
+                                        nn.BatchNorm1d(64),
+                                        nn.ELU(inplace=True),
+                                        nn.Linear(64, 16),
+                                        # nn.BatchNorm1d(16),
+                                        # nn.ReLU(inplace=True),
+                                        nn.BatchNorm1d(16, affine=False)) # output layer
+      
+        self.single_encoder = nn.Sequential(
+                                        nn.BatchNorm1d(num_prop,affine=False),
+                                        nn.Linear(num_prop, 64),
+                                        nn.BatchNorm1d(64),
+                                        nn.ELU(inplace=True),
+                                        nn.Linear(64, 16,bias=False),
+                                        nn.BatchNorm1d(16, affine=False)) # output layer
+
+        # self.encoder = nn.Sequential(nn.Linear(num_prop*num_hist, 128),
+        #                                 nn.ELU(inplace=True),
+        #                                 nn.Linear(128, 64),
+        #                                 nn.ELU(inplace=True),
+        #                                 nn.Linear(64, 16),
+        #                                 nn.BatchNorm1d(16, affine=False)) # output layer
+
+        # self.single_encoder = nn.Sequential(nn.Linear(num_prop, 128),
+        #                                 nn.ELU(inplace=True),
+        #                                 nn.Linear(128, 64),
+        #                                 nn.ELU(inplace=True),
+        #                                 nn.Linear(64, 16),
+        #                                 nn.BatchNorm1d(16, affine=False)) # output layer
+
+        # build a 2-layer predictor
+        self.predictor = nn.Sequential(nn.Linear(16, 32),
+                                        nn.BatchNorm1d(32),
+                                        nn.ELU(inplace=True), # hidden layer
+                                        nn.Linear(32, 16)) # output layer
+        
+        # build a 2-layer predictor
+        # self.predictor = nn.Sequential(nn.Linear(16, 32, bias=False),
+        #                                 nn.BatchNorm1d(32),
+        #                                 nn.ELU(inplace=True), # hidden layer
+        #                                 nn.Linear(32, 16)) # output layer
+
+
+        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+
+        self.criterion = nn.CosineSimilarity(dim=1)
+        
+    def forward(self,obs,obs_hist):
+        # with torch.no_grad():
+        obs_hist_full = torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1)
+        b,_,_ = obs_hist_full.size()
+        # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+        with torch.no_grad():
+            latents = self.encoder(obs_hist_full[:,5:,:].view(b,-1))
+            # latents,predicted_vel = self.encoder(obs_hist_full[:,5:,:])
+            predicted_vel = self.history_encoder(obs_hist_full)
+
+        # actor_input = torch.cat([latents.detach(),obs.detach()],dim=-1)
+        actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+        mean  = self.actor(actor_input)
+        return mean
+    
+    def SimSiamLoss(self,obs,obs_hist,priv):
+
+        obs_hist_full = torch.cat([
+                obs_hist[:,1:,:],
+                obs.unsqueeze(1)
+            ], dim=1)
+        
+        obs = obs.detach()
+        obs_hist_full = obs_hist_full.detach()
+        obs_hist = obs_hist.detach()
+        
+        b = obs.size()[0]
+        predicted_vel = self.history_encoder(obs_hist_full)
+        priv_loss = F.mse_loss(predicted_vel,0.01*priv)
+
+        z1 = self.encoder(obs_hist[:,5:,:].view(b,-1))
+        z2 = self.single_encoder(obs)
+
+        # z1 = self.encoder(obs_hist[:,5:,:].view(b,-1))
+        # z2 = self.encoder(obs_hist[:,:5,:].view(b,-1))
+
+        p1 = self.predictor(z1) # NxC
+        p2 = self.predictor(z2) # NxC
+
+        z1 = z1.detach()
+        z2 = z2.detach()
+
+        loss = -(self.criterion(p1, z2).mean() + self.criterion(p2, z1).mean()) * 0.5 + 1.0
+        loss = loss + priv_loss
+        return loss
+    
     
 class MixedMlpBarlowTwinsActor(nn.Module):
     def __init__(self,
@@ -1276,6 +1704,224 @@ class ActorCriticSF(nn.Module):
         model_jit = torch.jit.trace(self.actor_teacher_backbone,(obs_demo_input,hist_demo_input))
         model_jit.save(path)
 
+# class ActorCriticBarlowTwins(nn.Module):
+#     is_recurrent = False
+#     def __init__(self,  num_prop,
+#                         num_scan,
+#                         num_critic_obs,
+#                         num_priv_latent, 
+#                         num_hist,
+#                         num_actions,
+#                         scan_encoder_dims=[256, 256, 256],
+#                         actor_hidden_dims=[256, 256, 256],
+#                         critic_hidden_dims=[256, 256, 256],
+#                         activation='elu',
+#                         init_noise_std=1.0,
+#                         **kwargs):
+#         super(ActorCriticBarlowTwins, self).__init__()
+
+#         self.kwargs = kwargs
+#         priv_encoder_dims= kwargs['priv_encoder_dims']
+#         cost_dims = kwargs['num_costs']
+#         activation = get_activation(activation)
+#         self.num_prop = num_prop
+#         self.num_scan = num_scan
+#         self.num_hist = num_hist
+#         self.num_actions = num_actions
+#         self.num_priv_latent = num_priv_latent
+#         self.if_scan_encode = scan_encoder_dims is not None and num_scan > 0
+
+#         self.teacher_act = kwargs['teacher_act']
+#         if self.teacher_act:
+#             print("ppo with teacher actor")
+#         else:
+#             print("ppo with teacher actor")
+
+#         self.imi_flag = kwargs['imi_flag']
+#         if self.imi_flag:
+#             print("run imitation")
+#         else:
+#             print("no imitation")
+
+#         if len(priv_encoder_dims) > 0:
+#             priv_encoder_layers = mlp_factory(activation,num_priv_latent,None,priv_encoder_dims,last_act=True)
+#             self.priv_encoder = nn.Sequential(*priv_encoder_layers)
+#             priv_encoder_output_dim = priv_encoder_dims[-1]
+#         else:
+#             self.priv_encoder = nn.Identity()
+#             priv_encoder_output_dim = num_priv_latent
+
+#         if self.if_scan_encode:
+#             # scan_encoder_layers = mlp_factory(activation,num_scan,None,scan_encoder_dims,last_act=True)
+#             # self.scan_encoder = nn.Sequential(*scan_encoder_layers)
+#             # self.scan_encoder_output_dim = scan_encoder_dims[-1]
+#             scan_encoder_layers = mlp_factory(activation,num_scan,scan_encoder_dims[-1],scan_encoder_dims[:-1],last_act=False)
+#             self.scan_encoder = nn.Sequential(*scan_encoder_layers)
+#             self.scan_encoder_output_dim = scan_encoder_dims[-1]
+#         else:
+#             print("not using scan encoder")
+#             self.scan_encoder = nn.Identity()
+#             self.scan_encoder_output_dim = num_scan
+
+#         self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist, 16)
+
+#         # #MlpBarlowTwinsActor
+#         # self.actor_teacher_backbone = MlpBarlowTwinsActor(num_prop=num_prop,
+#         #                               num_hist=5,
+#         #                               num_actions=num_actions,
+#         #                               actor_dims=[512,256,128],
+#         #                               mlp_encoder_dims=[512,256,128],
+#         #                               activation=activation,
+#         #                               latent_dim=16,
+#         #                               obs_encoder_dims=[256,128])
+#         self.actor_teacher_backbone = MlpVQVAEActor(num_prop=num_prop,
+#                                 num_hist=5,
+#                                 num_actions=num_actions,
+#                                 actor_dims=[512,256,128],
+#                                 mlp_encoder_dims=[128,64],
+#                                 activation=activation,
+#                                 latent_dim=16,
+#                                 obs_encoder_dims=[128,64])
+#         # self.actor_teacher_backbone = MlpSimSiamActor(num_prop=num_prop,
+#         #                         num_hist=5,
+#         #                         num_actions=num_actions,
+#         #                         actor_dims=[512,256,128],
+#         #                         mlp_encoder_dims=[128,64],
+#         #                         activation=activation,
+#         #                         latent_dim=16,
+#         #                         obs_encoder_dims=[128,64])
+#         # self.actor_teacher_backbone = MlpMAEActor(num_prop=num_prop,
+#         #                         num_hist=5,
+#         #                         num_actions=num_actions,
+#         #                         actor_dims=[512,256,128],
+#         #                         mlp_encoder_dims=[128,64],
+#         #                         activation=activation,
+#         #                         latent_dim=16,
+#         #                         obs_encoder_dims=[128,64])
+#         print(self.actor_teacher_backbone)
+
+#         # Value function
+#         critic_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim,1,critic_hidden_dims,last_act=False)
+#         self.critic = nn.Sequential(*critic_layers)
+
+#         # cost function
+#         cost_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim,cost_dims,critic_hidden_dims,last_act=False)
+#         cost_layers.append(nn.Softplus())
+#         self.cost = nn.Sequential(*cost_layers)
+
+#         # Action noise
+#         self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
+#         self.distribution = None
+#         # disable args validation for speedup
+#         Normal.set_default_validate_args = False
+
+#     @staticmethod
+#     # not used at the moment
+#     def init_weights(sequential, scales):
+#         [torch.nn.init.orthogonal_(module.weight, gain=scales[idx]) for idx, module in
+#          enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))]
+        
+#     def set_teacher_act(self,flag):
+#         self.teacher_act = flag
+#         if self.teacher_act:
+#             print("acting by teacher")
+#         else:
+#             print("acting by student")
+
+#     def reset(self, dones=None):
+#         pass
+
+#     def forward(self):
+#         raise NotImplementedError
+    
+#     def get_std(self):
+#         return self.std
+    
+#     @property
+#     def action_mean(self):
+#         return self.distribution.mean
+
+#     @property
+#     def action_std(self):
+#         return self.distribution.stddev
+    
+#     @property
+#     def entropy(self):
+#         return self.distribution.entropy().sum(dim=-1)
+
+#     def update_distribution(self, obs):
+#         mean = self.act_teacher(obs)
+#         self.distribution = Normal(mean, mean*0. + self.get_std())
+
+#     def act(self, obs,**kwargs):
+#         self.update_distribution(obs)
+#         return self.distribution.sample()
+    
+#     def get_actions_log_prob(self, actions):
+#         return self.distribution.log_prob(actions).sum(dim=-1)
+    
+#     def act_teacher(self,obs, **kwargs):
+#         obs_prop = obs[:, :self.num_prop]
+#         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+#         mean = self.actor_teacher_backbone(obs_prop,obs_hist)
+#         return mean
+        
+#     def evaluate(self, obs, **kwargs):
+#         obs_prop = obs[:, :self.num_prop]
+        
+#         scan_latent = self.infer_scandots_latent(obs)
+#         latent = self.infer_priv_latent(obs)
+#         #history_latent = self.infer_hist_latent(obs)
+
+#         backbone_input = torch.cat([obs_prop,latent,scan_latent], dim=1)
+#         value = self.critic(backbone_input)
+#         return value
+    
+#     def evaluate_cost(self,obs, **kwargs):
+#         obs_prop = obs[:, :self.num_prop]
+        
+#         scan_latent = self.infer_scandots_latent(obs)
+#         latent = self.infer_priv_latent(obs)
+#         #history_latent = self.infer_hist_latent(obs)
+
+#         backbone_input = torch.cat([obs_prop,latent,scan_latent], dim=1)
+#         value = self.cost(backbone_input)
+#         return value
+    
+#     def infer_priv_latent(self, obs):
+#         priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + self.num_priv_latent]
+#         return self.priv_encoder(priv)
+    
+#     def infer_scandots_latent(self, obs):
+#         scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
+#         return self.scan_encoder(scan)
+    
+#     def infer_hist_latent(self, obs):
+#         hist = obs[:, -self.num_hist*self.num_prop:]
+#         return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
+    
+#     def imitation_learning_loss(self, obs):
+#         obs_prop = obs[:, :self.num_prop]
+#         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+#         priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 3]
+
+#         # loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
+#         # loss = self.actor_teacher_backbone.SimSiamLoss(obs_prop,obs_hist,priv)
+#         loss = self.actor_teacher_backbone.VaeLoss(obs_prop,obs_hist,priv)
+#         #loss = self.actor_teacher_backbone.maeLoss(obs_prop,obs_hist,priv)
+#         # loss = recon_loss + kl_loss + mseloss
+#         return loss
+    
+#     def imitation_mode(self):
+#         pass
+    
+#     def save_torch_jit_policy(self,path,device):
+#         self.actor_teacher_backbone.eval()
+#         obs_demo_input = torch.randn(1,self.num_prop).half().to(device)
+#         hist_demo_input = torch.randn(1,self.num_hist,self.num_prop).half().to(device)
+#         model_jit = torch.jit.trace(self.actor_teacher_backbone,(obs_demo_input,hist_demo_input))
+#         model_jit.save(path)
+
 class ActorCriticBarlowTwins(nn.Module):
     is_recurrent = False
     def __init__(self,  num_prop,
@@ -1346,7 +1992,7 @@ class ActorCriticBarlowTwins(nn.Module):
         #                               activation=activation,
         #                               latent_dim=16,
         #                               obs_encoder_dims=[256,128])
-        self.actor_teacher_backbone = MlpBarlowTwinsActor(num_prop=num_prop,
+        self.actor_teacher_backbone = MlpVQVAEActor(num_prop=num_prop-3,
                                 num_hist=5,
                                 num_actions=num_actions,
                                 actor_dims=[512,256,128],
@@ -1354,14 +2000,30 @@ class ActorCriticBarlowTwins(nn.Module):
                                 activation=activation,
                                 latent_dim=16,
                                 obs_encoder_dims=[128,64])
+        # self.actor_teacher_backbone = MlpSimSiamActor(num_prop=num_prop,
+        #                         num_hist=5,
+        #                         num_actions=num_actions,
+        #                         actor_dims=[512,256,128],
+        #                         mlp_encoder_dims=[128,64],
+        #                         activation=activation,
+        #                         latent_dim=16,
+        #                         obs_encoder_dims=[128,64])
+        # self.actor_teacher_backbone = MlpMAEActor(num_prop=num_prop,
+        #                         num_hist=5,
+        #                         num_actions=num_actions,
+        #                         actor_dims=[512,256,128],
+        #                         mlp_encoder_dims=[128,64],
+        #                         activation=activation,
+        #                         latent_dim=16,
+        #                         obs_encoder_dims=[128,64])
         print(self.actor_teacher_backbone)
 
         # Value function
-        critic_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+16,1,critic_hidden_dims,last_act=False)
+        critic_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim,1,critic_hidden_dims,last_act=False)
         self.critic = nn.Sequential(*critic_layers)
 
         # cost function
-        cost_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim+16,cost_dims,critic_hidden_dims,last_act=False)
+        cost_layers = mlp_factory(activation,num_prop+self.scan_encoder_output_dim+priv_encoder_output_dim,cost_dims,critic_hidden_dims,last_act=False)
         cost_layers.append(nn.Softplus())
         self.cost = nn.Sequential(*cost_layers)
 
@@ -1417,8 +2079,10 @@ class ActorCriticBarlowTwins(nn.Module):
         return self.distribution.log_prob(actions).sum(dim=-1)
     
     def act_teacher(self,obs, **kwargs):
-        obs_prop = obs[:, :self.num_prop]
-        obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+        # obs_prop = obs[:, :self.num_prop]
+        # obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+        obs_prop = obs[:, 3:self.num_prop]
+        obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)[:,:,3:]
         mean = self.actor_teacher_backbone(obs_prop,obs_hist)
         return mean
         
@@ -1427,9 +2091,9 @@ class ActorCriticBarlowTwins(nn.Module):
         
         scan_latent = self.infer_scandots_latent(obs)
         latent = self.infer_priv_latent(obs)
-        history_latent = self.infer_hist_latent(obs)
+        #history_latent = self.infer_hist_latent(obs)
 
-        backbone_input = torch.cat([obs_prop,latent,scan_latent,history_latent], dim=1)
+        backbone_input = torch.cat([obs_prop,latent,scan_latent], dim=1)
         value = self.critic(backbone_input)
         return value
     
@@ -1438,9 +2102,9 @@ class ActorCriticBarlowTwins(nn.Module):
         
         scan_latent = self.infer_scandots_latent(obs)
         latent = self.infer_priv_latent(obs)
-        history_latent = self.infer_hist_latent(obs)
+        #history_latent = self.infer_hist_latent(obs)
 
-        backbone_input = torch.cat([obs_prop,latent,scan_latent,history_latent], dim=1)
+        backbone_input = torch.cat([obs_prop,latent,scan_latent], dim=1)
         value = self.cost(backbone_input)
         return value
     
@@ -1457,19 +2121,26 @@ class ActorCriticBarlowTwins(nn.Module):
         return self.history_encoder(hist.view(-1, self.num_hist, self.num_prop))
     
     def imitation_learning_loss(self, obs):
-        obs_prop = obs[:, :self.num_prop]
+        # obs_prop = obs[:, :self.num_prop]
+        # obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+        obs_prop = obs[:, 3:self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
-        priv = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 3]
+        priv = obs_hist[:,-1,:3]
 
-        loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
+        # loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist,priv,5e-3)
+        # loss = self.actor_teacher_backbone.SimSiamLoss(obs_prop,obs_hist,priv)
+        loss = self.actor_teacher_backbone.VaeLoss(obs_prop,obs_hist[:,:,3:],priv)
+        #loss = self.actor_teacher_backbone.maeLoss(obs_prop,obs_hist,priv)
+        # loss = recon_loss + kl_loss + mseloss
         return loss
     
     def imitation_mode(self):
         pass
     
     def save_torch_jit_policy(self,path,device):
-        obs_demo_input = torch.randn(1,self.num_prop).half().to(device)
-        hist_demo_input = torch.randn(1,self.num_hist,self.num_prop).half().to(device)
+        self.actor_teacher_backbone.eval()
+        obs_demo_input = torch.randn(1,self.num_prop-3).half().to(device)
+        hist_demo_input = torch.randn(1,self.num_hist,self.num_prop-3).half().to(device)
         model_jit = torch.jit.trace(self.actor_teacher_backbone,(obs_demo_input,hist_demo_input))
         model_jit.save(path)
 
