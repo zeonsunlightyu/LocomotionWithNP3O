@@ -261,7 +261,7 @@ class NP3O:
                     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
                     self.imitation_optimizer.zero_grad()
                     imitation_loss.backward()
-                    nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 1)
+                    nn.utils.clip_grad_norm_(self.actor_critic.parameters(),1)
                     self.imitation_optimizer.step()
 
                     mean_imitation_loss += imitation_loss.item()

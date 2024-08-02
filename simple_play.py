@@ -35,7 +35,7 @@ def play(args):
     env_cfg.terrain.curriculum = False
     env_cfg.noise.add_noise = False
     #env_cfg.terrain.mesh_type = 'plane'
-    #env_cfg.domain_rand.push_robots = False
+    env_cfg.domain_rand.push_robots = False
     #env_cfg.domain_rand.randomize_friction = False
     env_cfg.domain_rand.randomize_base_com = False
     env_cfg.domain_rand.randomize_base_mass = False
@@ -63,11 +63,11 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_5200.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_13600.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)
-    policy.save_torch_jit_policy('model_him_phase.pt',env.device)
+    #policy.save_torch_jit_policy('model_him_phase.pt',env.device)
 
     # clear images under frames folder
     # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
@@ -87,7 +87,7 @@ def play(args):
 
     img_idx = 0
 
-    video_duration = 20
+    video_duration = 30
     num_frames = int(video_duration / env.dt)
     print(f'gathering {num_frames} frames')
     video = None
