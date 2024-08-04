@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 import torch.nn.functional as F 
-from modules.common_modules import MAE, VQVAE, VQVAE_CNN, VQVAE_EMA, VQVAE_RNN, AutoEncoder, BetaVAE, MixedLayerNormMlp, MixedLipMlp, MixedMlp, RnnBarlowTwinsStateHistoryEncoder, RnnDoubleHeadEncoder, RnnEncoder, RnnStateHistoryEncoder, StateHistoryEncoder, VQVAE_Trans, get_activation, mlp_factory, mlp_layernorm_factory
+from modules.common_modules import MAE, VQVAE, VQVAE_CNN, VQVAE_EMA, VQVAE_RNN, AutoEncoder, BetaVAE, MixedLayerNormMlp, MixedLipMlp, MixedMlp, RnnBarlowTwinsStateHistoryEncoder, RnnDoubleHeadEncoder, RnnEncoder, RnnStateHistoryEncoder, StateHistoryEncoder, VQVAE_Trans, VQVAE_vel, get_activation, mlp_factory, mlp_layernorm_factory
 from modules.transformer_modules import ActionCausalTransformer, StateCausalClsTransformer, StateCausalHeadlessTransformer, StateCausalTransformer
 class Config:
     def __init__(self):
@@ -424,6 +424,73 @@ class MlpBVAEActor(nn.Module):
 
 #         return loss
     
+# class MlpVQVAEActor(nn.Module):
+#     def __init__(self,
+#                  num_prop,
+#                  num_hist,
+#                  obs_encoder_dims,
+#                  mlp_encoder_dims,
+#                  actor_dims,
+#                  latent_dim,
+#                  num_actions,
+#                  activation) -> None:
+#         super(MlpVQVAEActor,self).__init__()
+
+
+#         self.actor = nn.Sequential(*mlp_factory(activation=activation,
+#                                  input_dims=latent_dim + num_prop +3,
+#                                  out_dims=num_actions,
+#                                  hidden_dims=actor_dims))
+
+#         # self.actor = MixedMlp(input_size=num_prop,
+#         #                       latent_size=latent_dim+3,
+#         #                       hidden_size=128,
+#         #                       num_actions=num_actions,
+#         #                       num_experts=4)
+       
+#         self.Vae = VQVAE_vel(in_dim=num_hist*num_prop)
+#         # self.Vae = VQVAE_EMA(in_dim=num_hist*num_prop)
+
+#         # self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+
+#         # self.norm = nn.LayerNorm(num_prop + 3)
+
+#     def forward(self,obs,obs_hist):
+#         # with torch.no_grad():
+#         obs_hist_full = torch.cat([
+#                 obs_hist[:,1:,:],
+#                 obs.unsqueeze(1)
+#             ], dim=1)
+#         b,_,_ = obs_hist_full.size()
+#         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
+#         with torch.no_grad():
+#             latents,predicted_vel = self.Vae.get_latent(obs_hist_full[:,5:,:].reshape(b,-1))
+#             # predicted_vel = self.history_encoder(obs_hist_full)
+
+#         # normed = self.norm(torch.cat([predicted_vel.detach(),obs.detach()],dim=-1))
+#         actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
+#         # mean  = self.actor(torch.cat([latents.detach(),predicted_vel.detach()],dim=-1),obs.detach())
+#         # actor_input = torch.cat([normed,obs.detach()],dim=-1)
+#         mean  = self.actor(actor_input)
+#         return mean
+    
+#     def VaeLoss(self,obs,obs_hist,priv):
+#         obs = obs.detach()
+#         obs_hist = obs_hist.detach()
+        
+#         b = obs.size()[0]
+
+#         # obs_hist = obs_hist[:,5:,:].view(b,-1)
+#         # recon,quantize,z,onehot_encode = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
+#         # loss = self.Vae.loss_fn(obs,recon,quantize,z,onehot_encode) 
+#         recon,quantize,z,predicted_vel = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
+#         # predicted_vel = self.history_encoder(obs_hist)
+#         loss = self.Vae.loss_fn(obs,recon,quantize,z) 
+#         mseloss = F.mse_loss(predicted_vel,priv)
+#         loss = loss + mseloss
+
+#         return loss
+
 class MlpVQVAEActor(nn.Module):
     def __init__(self,
                  num_prop,
@@ -448,10 +515,10 @@ class MlpVQVAEActor(nn.Module):
         #                       num_actions=num_actions,
         #                       num_experts=4)
        
-        self.Vae = VQVAE(in_dim=num_hist*num_prop)
+        self.Vae = VQVAE_vel(in_dim=num_hist*num_prop)
         # self.Vae = VQVAE_EMA(in_dim=num_hist*num_prop)
 
-        self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
+        # self.history_encoder = StateHistoryEncoder(activation, num_prop, num_hist*2, 3,final_act=False)
 
         # self.norm = nn.LayerNorm(num_prop + 3)
 
@@ -464,8 +531,8 @@ class MlpVQVAEActor(nn.Module):
         b,_,_ = obs_hist_full.size()
         # obs_hist_full = obs_hist_full[:,5:,:].view(b,-1)
         with torch.no_grad():
-            latents = self.Vae.get_latent(obs_hist_full[:,5:,:].reshape(b,-1))
-            predicted_vel = self.history_encoder(obs_hist_full)
+            latents,predicted_vel = self.Vae.get_latent(obs_hist_full[:,5:,:].reshape(b,-1))
+            # predicted_vel = self.history_encoder(obs_hist_full)
 
         # normed = self.norm(torch.cat([predicted_vel.detach(),obs.detach()],dim=-1))
         actor_input = torch.cat([latents.detach(),predicted_vel.detach(),obs.detach()],dim=-1)
@@ -483,8 +550,8 @@ class MlpVQVAEActor(nn.Module):
         # obs_hist = obs_hist[:,5:,:].view(b,-1)
         # recon,quantize,z,onehot_encode = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
         # loss = self.Vae.loss_fn(obs,recon,quantize,z,onehot_encode) 
-        recon,quantize,z = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
-        predicted_vel = self.history_encoder(obs_hist)
+        recon,quantize,z,predicted_vel = self.Vae(obs_hist[:,5:,:].reshape(b,-1))
+        # predicted_vel = self.history_encoder(obs_hist)
         loss = self.Vae.loss_fn(obs,recon,quantize,z) 
         mseloss = F.mse_loss(predicted_vel,priv)
         loss = loss + mseloss

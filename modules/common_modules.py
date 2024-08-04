@@ -542,15 +542,22 @@ class Quantizer(nn.Module):
 
         self.embeddings = nn.Embedding(self.num_embeddings, self.embedding_dim)
 
-        self.embeddings.weight.data.uniform_(
-            -1 / self.num_embeddings, 1 / self.num_embeddings
-        )
+        # self.embeddings.weight.data.uniform_(
+        #     -1 / self.num_embeddings, 1 / self.num_embeddings
+        # )
+        # self.linear_proj = nn.Linear(embedding_dim,int(embedding_dim/2))
 
     def forward(self, z: torch.Tensor):
+        # z_norm = F.normalize(self.linear_proj(z))
+        # emb_norm = F.normalize(self.linear_proj(self.embeddings.weight))
+
+        # z_norm = F.normalize(z)
+        # emb_norm = F.normalize(self.embeddings.weight)
+
         distances = (
-            (z.reshape(-1, self.embedding_dim) ** 2).sum(dim=-1, keepdim=True)
+            (z ** 2).sum(dim=-1, keepdim=True)
             + (self.embeddings.weight**2).sum(dim=-1)
-            - 2 * z.reshape(-1, self.embedding_dim) @ self.embeddings.weight.T
+            - 2 * z @ self.embeddings.weight.T
         )
 
         closest = distances.argmin(-1).unsqueeze(-1)
@@ -563,8 +570,47 @@ class Quantizer(nn.Module):
 
         # quantization
         quantized = one_hot_encoding @ self.embeddings.weight
-        quantized = quantized.reshape_as(z)
 
+        return quantized
+    
+class QuantizerNorm(nn.Module):
+    def __init__(self,embedding_dim,num_embeddings):
+        nn.Module.__init__(self)
+
+        self.embedding_dim = embedding_dim
+        self.num_embeddings = num_embeddings
+
+        self.embeddings = nn.Embedding(self.num_embeddings, self.embedding_dim)
+
+        # self.embeddings.weight.data.uniform_(
+        #     -1 / self.num_embeddings, 1 / self.num_embeddings
+        # )
+        self.linear_proj = nn.Linear(embedding_dim,int(embedding_dim/2))
+
+    def forward(self, z: torch.Tensor):
+        z_ = self.linear_proj(z)
+        emb_ = self.linear_proj(self.embeddings.weight)
+
+        z_norm = F.normalize(z_, dim=-1) 
+        emb_norm = F.normalize(emb_,dim=-1)
+
+        distances = (
+            (z_norm ** 2).sum(dim=-1, keepdim=True)
+            + (emb_norm**2).sum(dim=-1)
+            - 2 * z_norm @ emb_norm.T
+        )
+
+        closest = distances.argmin(-1).unsqueeze(-1)
+
+        one_hot_encoding = (
+            F.one_hot(closest, num_classes=self.num_embeddings)
+            .type(torch.float)
+            .squeeze(1)
+        )
+
+        # quantization
+        quantized = one_hot_encoding @ self.embeddings.weight
+        quantized = F.normalize(quantized,dim=-1)
         return quantized
     
 class QuantizerEMA(nn.Module):
@@ -574,19 +620,18 @@ class QuantizerEMA(nn.Module):
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
         self.decay = 0.99
-        #self.decay = 0.5
 
         embeddings = torch.empty(self.num_embeddings, self.embedding_dim)
-
-        embeddings.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
+        embeddings.data.normal_()
 
         self.register_buffer("cluster_size", torch.zeros(self.num_embeddings))
         self.register_buffer(
             "ema_embed", torch.zeros(self.num_embeddings, self.embedding_dim)
         )
-        self.ema_embed.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
 
         self.register_buffer("embeddings", embeddings)
+
+        self.linear_proj = nn.Linear(embedding_dim,int(embedding_dim/2))
 
     def update_codebook(self,z,one_hot_encoding):
         n_i = torch.sum(one_hot_encoding, dim=0)
@@ -607,10 +652,17 @@ class QuantizerEMA(nn.Module):
         self.ema_embed.data.copy_(ema_embed)
 
     def forward(self, z: torch.Tensor):
+
+        z_ = self.linear_proj(z)
+        emb_ = self.linear_proj(self.embeddings)
+
+        # z_norm = F.normalize(z_, dim=-1) 
+        # emb_norm = F.normalize(emb_,dim=-1)
+
         distances = (
-            (z.reshape(-1, self.embedding_dim) ** 2).sum(dim=-1, keepdim=True)
-            + (self.embeddings**2).sum(dim=-1)
-            - 2 * z.reshape(-1, self.embedding_dim) @ self.embeddings.T
+            (z_ ** 2).sum(dim=-1, keepdim=True)
+            + (emb_**2).sum(dim=-1)
+            - 2 * z_ @ emb_.T
         )
 
         closest = distances.argmin(-1).unsqueeze(-1)
@@ -623,7 +675,6 @@ class QuantizerEMA(nn.Module):
 
         # quantization
         quantized = one_hot_encoding @ self.embeddings
-        quantized = quantized.reshape_as(z)
 
 
         return quantized,one_hot_encoding
@@ -1115,11 +1166,11 @@ class VQVAE(nn.Module):
         
         encoder_layers = []
         encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
-                                            nn.LayerNorm(encoder_hidden_dims[0]),
+                                            # nn.LayerNorm(encoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(encoder_hidden_dims)-1):
             encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
-                                        nn.LayerNorm(encoder_hidden_dims[l+1]),   
+                                        # nn.LayerNorm(encoder_hidden_dims[l+1]),   
                                         nn.ELU()))
         self.encoder = nn.Sequential(*encoder_layers)
 
@@ -1130,14 +1181,14 @@ class VQVAE(nn.Module):
         # Build Decoder
         decoder_layers = []
         decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
-                                            nn.LayerNorm(decoder_hidden_dims[0]),
+                                            # nn.LayerNorm(decoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(decoder_hidden_dims)):
             if l == len(decoder_hidden_dims) - 1:
                 decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
             else:
                 decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
-                                      nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                    #   nn.LayerNorm(decoder_hidden_dims[l+1]),
                                         nn.ELU()))
 
         self.decoder = nn.Sequential(*decoder_layers)
@@ -1148,7 +1199,7 @@ class VQVAE(nn.Module):
     
     def get_latent(self,input):
         z = self.encode(input)
-        #z = F.normalize(z,dim=-1,p=2)
+        z = F.normalize(z,dim=-1,p=2)
         # z = self.normalize(z)
         # z = z.reshape(z.shape[0], 1, 1, -1)
         # z = z.permute(0, 2, 3, 1)
@@ -1171,32 +1222,221 @@ class VQVAE(nn.Module):
     
     def forward(self, input):
         z = self.encode(input)
-        z = z.reshape(z.shape[0], 1, 1, -1)
-        z = z.permute(0, 2, 3, 1)
         quantize = self.quantizer(z)
-        quantize = quantize.reshape(z.shape[0], -1)
-        z = z.reshape(z.shape[0],-1)
         input_hat = self.decode(quantize,z)
         return input_hat,quantize,z
     
     def loss_fn(self,y, y_hat,quantized,z):
-        recon_loss = F.mse_loss(y_hat, y, reduction="none").sum(dim=-1)
+        recon_loss = F.mse_loss(y_hat, y)
         
         commitment_loss = F.mse_loss(
             quantized.detach(),
-            z,
-            reduction="sum",
+            z
         )
 
         embedding_loss = F.mse_loss(
             quantized,
-            z.detach(),
-            reduction="sum",
+            z.detach()
         )
 
         vq_loss = 0.25*commitment_loss + embedding_loss
 
-        return (recon_loss + vq_loss).mean(dim=0)
+        return recon_loss + vq_loss
+    
+class VQVAE_vel(nn.Module):
+
+    def __init__(self,
+                 in_dim= 45*5,
+                 latent_dim = 16,
+                 encoder_hidden_dims = [128,64],
+                 decoder_hidden_dims = [64,128],
+                 output_dim = 45) -> None:
+        
+        super(VQVAE_vel, self).__init__()
+
+        self.latent_dim = latent_dim
+        
+        encoder_layers = []
+        encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
+                                            # nn.LayerNorm(encoder_hidden_dims[0]),
+                                            nn.ELU()))
+        for l in range(len(encoder_hidden_dims)-1):
+            encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
+                                        # nn.LayerNorm(encoder_hidden_dims[l+1]),   
+                                        nn.ELU()))
+        self.encoder = nn.Sequential(*encoder_layers)
+
+        self.fc_mu = nn.Linear(encoder_hidden_dims[-1], latent_dim)
+        self.fc_vel = nn.Sequential(nn.Linear(encoder_hidden_dims[-1], 32),
+                                    nn.ELU(),
+                                    nn.Linear(32,3))
+        # self.normalize = nn.LayerNorm(latent_dim,elementwise_affine=False)
+
+        # Build Decoder
+        decoder_layers = []
+        decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
+                                            # nn.LayerNorm(decoder_hidden_dims[0]),
+                                            nn.ELU()))
+        for l in range(len(decoder_hidden_dims)):
+            if l == len(decoder_hidden_dims) - 1:
+                decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
+            else:
+                decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
+                                    #   nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                        nn.ELU()))
+
+        self.decoder = nn.Sequential(*decoder_layers)
+        self.embedding_dim = latent_dim
+        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
+        # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=256)
+        # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=512)
+    
+    def get_latent(self,input):
+        z,vel = self.encode(input)
+        z = F.normalize(z,dim=-1,p=2)
+        # z = self.normalize(z)
+        # z = z.reshape(z.shape[0], 1, 1, -1)
+        # z = z.permute(0, 2, 3, 1)
+        # quantize = self.quantizer(z)
+        # quantize = quantize.reshape(z.shape[0], -1)
+        return z,vel
+
+    def encode(self,input):
+        latent = self.encoder(input)
+        z = self.fc_mu(latent)
+        #z = F.normalize(z,dim=-1,p=2)
+        # z = self.normalize(z)
+        vel = self.fc_vel(latent)
+        return z,vel 
+    
+    def decode(self,quantized,z):
+        quantized = z + (quantized - z).detach()
+        input_hat = self.decoder(quantized)
+        return input_hat
+    
+    def forward(self, input):
+        z,vel = self.encode(input)
+        quantize = self.quantizer(z)
+        input_hat = self.decode(quantize,z)
+        return input_hat,quantize,z,vel
+    
+    def loss_fn(self,y, y_hat,quantized,z):
+        recon_loss = F.mse_loss(y_hat, y)
+        
+        commitment_loss = F.mse_loss(
+            quantized.detach(),
+            z
+        )
+
+        embedding_loss = F.mse_loss(
+            quantized,
+            z.detach()
+        )
+
+        vq_loss = 0.25*commitment_loss + embedding_loss
+
+        return recon_loss + vq_loss
+    
+class VQVAE_vel_conv(nn.Module):
+
+    def __init__(self,
+                 in_dim= 45*5,
+                 latent_dim = 16,
+                 encoder_hidden_dims = [128,64],
+                 decoder_hidden_dims = [64,128],
+                 output_dim = 45) -> None:
+        
+        super(VQVAE_vel_conv, self).__init__()
+
+        self.latent_dim = latent_dim
+        
+        self.merge_conv = nn.Sequential(nn.Conv1d(in_channels=45,out_channels=45,kernel_size=2,stride=2),
+                                        nn.ELU())
+
+        encoder_layers = []
+        encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
+                                            # nn.LayerNorm(encoder_hidden_dims[0]),
+                                            nn.ELU()))
+        for l in range(len(encoder_hidden_dims)-1):
+            encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
+                                        # nn.LayerNorm(encoder_hidden_dims[l+1]),   
+                                        nn.ELU()))
+        self.encoder = nn.Sequential(*encoder_layers)
+
+        self.fc_mu = nn.Linear(encoder_hidden_dims[-1], latent_dim)
+        self.fc_vel = nn.Sequential(nn.Linear(encoder_hidden_dims[-1], 32),
+                                    nn.ELU(),
+                                    nn.Linear(32,3))
+        # self.normalize = nn.LayerNorm(latent_dim,elementwise_affine=False)
+
+        # Build Decoder
+        decoder_layers = []
+        decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
+                                            # nn.LayerNorm(decoder_hidden_dims[0]),
+                                            nn.ELU()))
+        for l in range(len(decoder_hidden_dims)):
+            if l == len(decoder_hidden_dims) - 1:
+                decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
+            else:
+                decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
+                                    #   nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                        nn.ELU()))
+
+        self.decoder = nn.Sequential(*decoder_layers)
+        self.embedding_dim = latent_dim
+        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
+        # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=256)
+        # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=512)
+    
+    def get_latent(self,input):
+        z,vel = self.encode(input)
+        z = F.normalize(z,dim=-1,p=2)
+        # z = self.normalize(z)
+        # z = z.reshape(z.shape[0], 1, 1, -1)
+        # z = z.permute(0, 2, 3, 1)
+        # quantize = self.quantizer(z)
+        # quantize = quantize.reshape(z.shape[0], -1)
+        return z,vel
+
+    def encode(self,input):
+        b = input.size()[0]
+        input = self.merge_conv(input.permute((0,2,1)))
+        input = input.view(b,-1)
+        
+        latent = self.encoder(input)
+        z = self.fc_mu(latent)
+        #z = F.normalize(z,dim=-1,p=2)
+        # z = self.normalize(z)
+        vel = self.fc_vel(latent)
+        return z,vel 
+    
+    def decode(self,quantized,z):
+        quantized = z + (quantized - z).detach()
+        input_hat = self.decoder(quantized)
+        return input_hat
+    
+    def forward(self, input):
+        z,vel = self.encode(input)
+        quantize = self.quantizer(z)
+        input_hat = self.decode(quantize,z)
+        return input_hat,quantize,z,vel
+    
+    def loss_fn(self,y, y_hat,quantized,z):
+        recon_loss = F.mse_loss(y_hat, y)
+        
+        commitment_loss = F.mse_loss(
+            quantized.detach(),
+            z
+        )
+
+        embedding_loss = F.mse_loss(
+            quantized,
+            z.detach()
+        )
+
+        vq_loss = 0.25*commitment_loss + embedding_loss
+
+        return recon_loss + vq_loss
     
 class VQVAE_RNN(nn.Module):
 
@@ -1299,7 +1539,6 @@ class CnnHistoryEncoder(nn.Module):
 
         self.encoder = nn.Sequential(
                 nn.Linear(input_size, 3 * channel_size), 
-                nn.LayerNorm(3 * channel_size),
                 nn.ELU(),
                 )
 
@@ -1338,32 +1577,32 @@ class VQVAE_CNN(nn.Module):
         
         self.encoder = CnnHistoryEncoder(45,10,latent_dim)
 
-        #self.fc_mu = nn.Linear(encoder_hidden_dims[-1], latent_dim)
+        # self.fc_mu = nn.Linear(encoder_hidden_dims[-1], latent_dim)
         # self.fc_vel = nn.Linear(encoder_hidden_dims[-1], 3)
         # self.normalize = nn.LayerNorm(latent_dim,elementwise_affine=False)
 
         # Build Decoder
         decoder_layers = []
         decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
-                                            nn.LayerNorm(decoder_hidden_dims[0]),
+                                            # nn.LayerNorm(decoder_hidden_dims[0],elementwise_affine=False),
                                             nn.ELU()))
         for l in range(len(decoder_hidden_dims)):
             if l == len(decoder_hidden_dims) - 1:
                 decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
             else:
                 decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
-                                      nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                    #   nn.LayerNorm(decoder_hidden_dims[l+1],elementwise_affine=False),
                                         nn.ELU()))
 
         self.decoder = nn.Sequential(*decoder_layers)
         self.embedding_dim = latent_dim
-        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
+        #self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
         # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=256)
-        # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=512)
+        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
     
     def get_latent(self,input):
-        z,vel= self.encode(input)
-        #z = F.normalize(z,dim=-1,p=2)
+        z,vel = self.encode(input)
+        z = F.normalize(z,dim=-1,p=2)
         # z = self.normalize(z)
         # z = z.reshape(z.shape[0], 1, 1, -1)
         # z = z.permute(0, 2, 3, 1)
@@ -1373,10 +1612,8 @@ class VQVAE_CNN(nn.Module):
 
     def encode(self,input):
         z,vel = self.encoder(input)
-        #z = F.normalize(z,dim=-1,p=2)
-        # z = self.normalize(z)
-        # vel = self.fc_vel(latent)
-        return z,vel
+
+        return z,vel 
     
     def decode(self,quantized,z):
         quantized = z + (quantized - z).detach()
@@ -1385,32 +1622,26 @@ class VQVAE_CNN(nn.Module):
     
     def forward(self, input):
         z,vel = self.encode(input)
-        z = z.reshape(z.shape[0], 1, 1, -1)
-        z = z.permute(0, 2, 3, 1)
         quantize = self.quantizer(z)
-        quantize = quantize.reshape(z.shape[0], -1)
-        z = z.reshape(z.shape[0],-1)
         input_hat = self.decode(quantize,z)
         return input_hat,quantize,z,vel
     
     def loss_fn(self,y, y_hat,quantized,z):
-        recon_loss = F.mse_loss(y_hat, y, reduction="none").sum(dim=-1)
+        recon_loss = F.mse_loss(y_hat, y)
         
         commitment_loss = F.mse_loss(
             quantized.detach(),
-            z,
-            reduction="sum",
+            z
         )
 
         embedding_loss = F.mse_loss(
             quantized,
-            z.detach(),
-            reduction="sum",
+            z.detach()
         )
 
         vq_loss = 0.25*commitment_loss + embedding_loss
 
-        return (recon_loss + vq_loss).mean(dim=0)
+        return recon_loss + vq_loss
     
 class Config:
     def __init__(self):
@@ -1534,11 +1765,9 @@ class VQVAE_EMA(nn.Module):
         
         encoder_layers = []
         encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
-                                            nn.LayerNorm(encoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(encoder_hidden_dims)-1):
-            encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
-                                        nn.LayerNorm(encoder_hidden_dims[l+1]),   
+            encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),  
                                         nn.ELU()))
         self.encoder = nn.Sequential(*encoder_layers)
 
@@ -1547,14 +1776,12 @@ class VQVAE_EMA(nn.Module):
         # Build Decoder
         decoder_layers = []
         decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
-                                            nn.LayerNorm(decoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(decoder_hidden_dims)):
             if l == len(decoder_hidden_dims) - 1:
                 decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
             else:
                 decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
-                                       nn.LayerNorm(decoder_hidden_dims[l+1]),
                                         nn.ELU()))
 
         self.decoder = nn.Sequential(*decoder_layers)
@@ -1565,7 +1792,7 @@ class VQVAE_EMA(nn.Module):
     
     def get_latent(self,input):
         z = self.encode(input)
-        #z = F.normalize(z,dim=-1,p=2)
+        z = F.normalize(z,dim=-1,p=2)
         #z = self.normalize(z)
         # z = z_.reshape(z_.shape[0], 1, 1, -1)
         # z = z.permute(0, 2, 3, 1)
@@ -1588,21 +1815,16 @@ class VQVAE_EMA(nn.Module):
     
     def forward(self, input):
         z = self.encode(input)
-        z = z.reshape(z.shape[0], 1, 1, -1)
-        z = z.permute(0, 2, 3, 1)
         quantize,onehot_encode = self.quantizer(z)
-        quantize = quantize.reshape(z.shape[0], -1)
-        z = z.reshape(z.shape[0],-1)
         input_hat = self.decode(quantize,z)
         return input_hat,quantize,z,onehot_encode
     
     def loss_fn(self,y, y_hat,quantized,z,onehot_encode):
-        recon_loss = F.mse_loss(y_hat, y, reduction="none").sum(dim=-1)
+        recon_loss = F.mse_loss(y_hat, y)
         
         commitment_loss = F.mse_loss(
             quantized.detach(),
-            z,
-            reduction="sum",
+            z
         )
 
         # embedding_loss = F.mse_loss(
@@ -1614,7 +1836,7 @@ class VQVAE_EMA(nn.Module):
 
         vq_loss = 0.25*commitment_loss #+ embedding_loss
 
-        return (recon_loss + vq_loss).mean(dim=0)
+        return recon_loss + vq_loss
     
 class MixedMlp(nn.Module):
     def __init__(
