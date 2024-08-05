@@ -50,7 +50,7 @@ class NP3O:
 
         if hasattr(self.actor_critic, 'imitation_learning_loss') and self.actor_critic.imi_flag:
             self.imi_flag = True
-            self.imitation_optimizer = optim.Adam(self.actor_critic.parameters(), lr=1e-3)
+            # self.imitation_optimizer = optim.Adam(self.actor_critic.parameters(), lr=1e-3)
             print('running with imi loss on')
         else:
             self.imi_flag = False
@@ -247,26 +247,26 @@ class NP3O:
                 combine_value_loss = self.cost_value_loss_coef * cost_value_loss + self.value_loss_coef * value_loss
                 entropy_loss = - self.entropy_coef * entropy_batch.mean()
 
-                # if self.imi_flag:
-                #     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-
-                #     loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss
-                # else:
-                #     loss = main_loss + combine_value_loss + entropy_loss
-
-                loss = main_loss + combine_value_loss + entropy_loss
-
                 if self.imi_flag:
-                    # imitation module gradient step
                     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
-                    self.imitation_optimizer.zero_grad()
-                    imitation_loss.backward()
-                    nn.utils.clip_grad_norm_(self.actor_critic.parameters(),1)
-                    self.imitation_optimizer.step()
 
-                    mean_imitation_loss += imitation_loss.item()
+                    loss = main_loss + combine_value_loss + entropy_loss + self.imi_weight*imitation_loss
                 else:
-                    mean_imitation_loss += 0
+                    loss = main_loss + combine_value_loss + entropy_loss
+
+                # loss = main_loss + combine_value_loss + entropy_loss
+
+                # if self.imi_flag:
+                #     # imitation module gradient step
+                #     imitation_loss = self.actor_critic.imitation_learning_loss(obs_batch)
+                #     self.imitation_optimizer.zero_grad()
+                #     imitation_loss.backward()
+                #     nn.utils.clip_grad_norm_(self.actor_critic.parameters(),1)
+                #     self.imitation_optimizer.step()
+
+                #     mean_imitation_loss += imitation_loss.item()
+                # else:
+                #     mean_imitation_loss += 0
 
                 # Gradient step
                 self.optimizer.zero_grad()
@@ -285,10 +285,11 @@ class NP3O:
                     obs_batch_max = current_max
                 if current_min < obs_batch_min:
                     obs_batch_min = current_min
-                # if self.imi_flag:
-                #     mean_imitation_loss += imitation_loss.item()
-                # else:
-                #     mean_imitation_loss += 0
+
+                if self.imi_flag:
+                    mean_imitation_loss += imitation_loss.item()
+                else:
+                    mean_imitation_loss += 0
 
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates

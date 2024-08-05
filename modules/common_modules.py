@@ -1355,11 +1355,11 @@ class VQVAE_vel_conv(nn.Module):
 
         encoder_layers = []
         encoder_layers.append(nn.Sequential(nn.Linear(in_dim, encoder_hidden_dims[0]),
-                                            # nn.LayerNorm(encoder_hidden_dims[0]),
+                                            nn.LayerNorm(encoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(encoder_hidden_dims)-1):
             encoder_layers.append(nn.Sequential(nn.Linear(encoder_hidden_dims[l], encoder_hidden_dims[l+1]),
-                                        # nn.LayerNorm(encoder_hidden_dims[l+1]),   
+                                        nn.LayerNorm(encoder_hidden_dims[l+1]),   
                                         nn.ELU()))
         self.encoder = nn.Sequential(*encoder_layers)
 
@@ -1372,25 +1372,25 @@ class VQVAE_vel_conv(nn.Module):
         # Build Decoder
         decoder_layers = []
         decoder_layers.append(nn.Sequential(nn.Linear(latent_dim, decoder_hidden_dims[0]),
-                                            # nn.LayerNorm(decoder_hidden_dims[0]),
+                                            nn.LayerNorm(decoder_hidden_dims[0]),
                                             nn.ELU()))
         for l in range(len(decoder_hidden_dims)):
             if l == len(decoder_hidden_dims) - 1:
                 decoder_layers.append(nn.Linear(decoder_hidden_dims[l],output_dim))
             else:
                 decoder_layers.append(nn.Sequential(nn.Linear(decoder_hidden_dims[l], decoder_hidden_dims[l+1]),
-                                    #   nn.LayerNorm(decoder_hidden_dims[l+1]),
+                                      nn.LayerNorm(decoder_hidden_dims[l+1]),
                                         nn.ELU()))
 
         self.decoder = nn.Sequential(*decoder_layers)
         self.embedding_dim = latent_dim
-        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=64)
+        self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=512)
         # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=256)
         # self.quantizer = Quantizer(embedding_dim=self.embedding_dim,num_embeddings=512)
     
     def get_latent(self,input):
         z,vel = self.encode(input)
-        z = F.normalize(z,dim=-1,p=2)
+        #z = F.normalize(z,dim=-1,p=2)
         # z = self.normalize(z)
         # z = z.reshape(z.shape[0], 1, 1, -1)
         # z = z.permute(0, 2, 3, 1)

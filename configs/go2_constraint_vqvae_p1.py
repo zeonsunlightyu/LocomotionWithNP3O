@@ -30,12 +30,12 @@
 
 from configs.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
-class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
+class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
         num_envs = 4096
 
         n_scan = 187
-        n_priv_latent =  4 + 1 + 12 + 12 + 12 + 6 + 1 + 4 + 1 - 3 + 3 - 3 + 4 - 7
+        n_priv_latent =  4 + 1 + 12 + 12 + 12 + 6 + 1 + 4 + 1 - 3 + 3 - 3 + 4 -7 
         n_proprio = 45 + 3
         history_len = 10
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
@@ -148,7 +148,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         # soft_torque_limit = 0.9
         base_height_target = 0.30
         clearance_height_target = -0.2
-        only_positive_rewards = False
+        only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
 
             torques = -0.0001
@@ -208,7 +208,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         randomize_lag_timesteps = True
         lag_timesteps = 3
 
-        disturbance = True
+        disturbance = False
         disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
     
@@ -242,18 +242,18 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             dof_vel_limits = 0.1
             #feet_air_time = 0.1
             # trot_contact = 0.1
-            #foot_slide = 0.1
-            # foot_regular = 0.1
-            #collision = 0.1
+            # #foot_slide = 0.1
+            # # foot_regular = 0.1
+            # #collision = 0.1
             # base_height = 0.1
-            #orientation = 0.1
-            #foot_swing_clearance = 0.1
-            #phase_contact = 0.1
-            #foot_width = 0.1
-            #collision = 0.1
-            #foot_clearance = 0.1
-            #acc_smoothness = 0.1
-            #foot_dia_enforce = 0.1
+            # #orientation = 0.1
+            # #foot_swing_clearance = 0.1
+            # #phase_contact = 0.1
+            # #foot_width = 0.1
+            # #collision = 0.1
+            # #foot_clearance = 0.1
+            # #acc_smoothness = 0.1
+            # #foot_dia_enforce = 0.1
             # foot_mirror = 0.1
             # stand_still = 0.1
 
@@ -266,30 +266,30 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #base_height = 0.0
             #orientation = 0.0
             # trot_contact = 1.0
-            #trot_contact = 2.0
-            #foot_slide = 5
-            # foot_regular = 0.0
+            # #trot_contact = 2.0
+            # #foot_slide = 5
+            # # foot_regular = 0.0
             # base_height = 0.0
-            #foot_swing_clearance = 0.0
-            #phase_contact = 1
-            #foot_width = 0.0
-            #collision = 1.0
-            #foot_clearance = 0.0
-            #acc_smoothness = 5
-            #foot_dia_enforce = 0.1
+            # #foot_swing_clearance = 0.0
+            # #phase_contact = 1
+            # #foot_width = 0.0
+            # #collision = 1.0
+            # #foot_clearance = 0.0
+            # #acc_smoothness = 5
+            # #foot_dia_enforce = 0.1
             # foot_mirror = 1
             # stand_still = 0.0
 
  
     class cost:
-        num_costs = 7
+        num_costs = 3
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
         measure_heights = True
         include_act_obs_pair_buf = False
 
-class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
+class Go2ConstraintVqvaeP1RoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 1e-3
@@ -302,7 +302,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
     class policy( LeggedRobotCfgPPO.policy):
         init_noise_std = 1.0
         continue_from_last_std = True
-        scan_encoder_dims = None#[128, 64, 32]
+        scan_encoder_dims = [128, 64, 32]
         actor_hidden_dims = [512, 256, 128]
         critic_hidden_dims = [512, 256, 128]
         #priv_encoder_dims = [64, 20]
@@ -314,18 +314,18 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 7
+        num_costs = 3
 
         teacher_act = True
         imi_flag = True
       
     class runner( LeggedRobotCfgPPO.runner ):
-        run_name = 'test_barlowtwins'
+        run_name = 'test_vqvae'
         experiment_name = 'rough_go2_constraint'
-        policy_class_name = 'ActorCriticBarlowTwins'
+        policy_class_name = 'ActorCriticVqvae'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 15000
+        max_iterations = 3000
         num_steps_per_env = 24
         resume = False
         resume_path = ''

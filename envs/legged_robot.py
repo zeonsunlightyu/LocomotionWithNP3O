@@ -425,14 +425,12 @@ class LeggedRobot(BaseTask):
             self.randomized_lag_tensor,
             #self.base_ang_vel  * self.obs_scales.ang_vel,
             # self.base_lin_vel * self.obs_scales.lin_vel,
-            self.disturbance[:, 0, :],
             self.mass_params_tensor,
             self.friction_coeffs_tensor,
             self.restitution_coeffs_tensor,
             self.motor_strength, 
             self.kp_factor,
-            self.kd_factor,
-            self.feet_body_frame_height), dim=-1)
+            self.kd_factor), dim=-1)
         
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
