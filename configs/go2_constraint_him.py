@@ -148,10 +148,10 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         # soft_torque_limit = 0.9
         base_height_target = 0.30
         clearance_height_target = -0.2
-        only_positive_rewards = False
+        only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
 
-            torques = -0.0001
+            torques = -0.0
             powers = -2e-5
             termination = 0.0
             tracking_lin_vel = 1.0
@@ -163,24 +163,25 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             base_height = -1.0
             #base_height = -1.0
             #collision = -0.01
-            collision = -1
+            collision = -0
             feet_stumble = 0.0
             action_rate = -0.01
             action_smoothness=-0.01
             stand_still = 0.0
-            foot_clearance= -0.0
+            foot_clearance= -0.01
             foot_clearance_hippos = -0.0
-            #orientation=-0.2
-            orientation=-0.0
+            orientation=-0.2
+            #orientation=-0.0
             #powers_dist=-10e-5
             feet_air_time = 0.0
             #foot_width_equlity = -1
             #foot_width_cons = -0.1
             # hip_pos = -0.01
+            #foot_mirror = -0.01
             # phase_contact = -0.1
             # phase_foot_clearance = -1
             #foot_swing_clearance = -0.01
-            foot_regular = -0.05
+            #foot_regular = -0.05
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -254,7 +255,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #foot_clearance = 0.1
             #acc_smoothness = 0.1
             #foot_dia_enforce = 0.1
-            # foot_mirror = 0.1
+            #foot_mirror = 0.1
+            #hip_pos = 0.1
             # stand_still = 0.1
 
 
@@ -277,12 +279,13 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             #foot_clearance = 0.0
             #acc_smoothness = 5
             #foot_dia_enforce = 0.1
-            # foot_mirror = 1
+            #foot_mirror = 1
+            #hip_pos = 1
             # stand_still = 0.0
 
  
     class cost:
-        num_costs = 7
+        num_costs = 3
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -314,7 +317,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 7
+        num_costs = 3
 
         teacher_act = True
         imi_flag = True

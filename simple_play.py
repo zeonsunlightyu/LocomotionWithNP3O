@@ -1,4 +1,5 @@
 from configs.go2_constraint_him import Go2ConstraintHimRoughCfg, Go2ConstraintHimRoughCfgPPO
+from configs.go2_constraint_vqvae_p2 import Go2ConstraintVqvaeP2RoughCfg, Go2ConstraintVqvaeP2RoughCfgPPO
 import cv2
 import os
 
@@ -63,11 +64,12 @@ def play(args):
                                                       **policy_cfg_dict)
     print(policy)
     #model_dict = torch.load(os.path.join(ROOT_DIR, 'model_4000_phase2_hip.pt'))
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_13600.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'model_9000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
+    policy.eval()
     policy = policy.to(env.device)
-    #policy.save_torch_jit_policy('model_him_phase.pt',env.device)
+    policy.save_torch_jit_policy('model_vqvae.pt',env.device)
 
     # clear images under frames folder
     # frames_path = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name, 'exported', 'frames')
@@ -87,7 +89,7 @@ def play(args):
 
     img_idx = 0
 
-    video_duration = 30
+    video_duration = 100
     num_frames = int(video_duration / env.dt)
     print(f'gathering {num_frames} frames')
     video = None
@@ -107,7 +109,7 @@ def play(args):
         z_vel += torch.square(env.base_lin_vel[:, 2])
         xy_vel += torch.sum(torch.square(env.base_ang_vel[:, :2]), dim=1)
 
-        env.commands[:,0] = 1
+        env.commands[:,0] = -0.5
         env.commands[:,1] = 0
         env.commands[:,2] = 0
         env.commands[:,3] = 0
@@ -141,7 +143,8 @@ if __name__ == '__main__':
     task_registry.register("go2N3poHim",LeggedRobot,Go2ConstraintHimRoughCfg(),Go2ConstraintHimRoughCfgPPO())
     task_registry.register("go2N3poTransP1",LeggedRobot,Go2ConstraintTransP1RoughCfg(),Go2ConstraintTransP1RoughCfgPPO())
     task_registry.register("go2N3poTransP2",LeggedRobot,Go2ConstraintTransP2RoughCfg(),Go2ConstraintTransP2RoughCfgPPO())
-
+    task_registry.register("go2N3poVqvaeP1",LeggedRobot,Go2ConstraintVqvaeP1RoughCfg(),Go2ConstraintVqvaeP1RoughCfgPPO())
+    task_registry.register("go2N3poVqvaeP2",LeggedRobot,Go2ConstraintVqvaeP2RoughCfg(),Go2ConstraintVqvaeP2RoughCfgPPO())
     RECORD_FRAMES = True
     args = get_args()
     play(args)

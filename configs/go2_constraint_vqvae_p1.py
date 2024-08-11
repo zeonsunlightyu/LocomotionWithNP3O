@@ -151,7 +151,8 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
 
-            torques = -0.0001
+          
+            torques = -0.0
             powers = -2e-5
             termination = 0.0
             tracking_lin_vel = 1.0
@@ -170,17 +171,18 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
             stand_still = 0.0
             foot_clearance= -0.0
             foot_clearance_hippos = -0.0
-            #orientation=-0.2
-            orientation=-0.0
+            orientation=-0.2
+            #orientation=-0.0
             #powers_dist=-10e-5
-            feet_air_time = 0.0
+            feet_air_time = 1.0
             #foot_width_equlity = -1
             #foot_width_cons = -0.1
             # hip_pos = -0.01
             # phase_contact = -0.1
             # phase_foot_clearance = -1
             #foot_swing_clearance = -0.01
-            foot_regular = -0.05
+            #foot_regular = -0.05
+
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -241,7 +243,7 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
             torque_limit = 0.1
             dof_vel_limits = 0.1
             #feet_air_time = 0.1
-            # trot_contact = 0.1
+            #trot_contact = 0.1
             # #foot_slide = 0.1
             # # foot_regular = 0.1
             # #collision = 0.1
@@ -252,9 +254,9 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
             # #foot_width = 0.1
             # #collision = 0.1
             # #foot_clearance = 0.1
-            # #acc_smoothness = 0.1
+            #acc_smoothness = 1
             # #foot_dia_enforce = 0.1
-            # foot_mirror = 0.1
+            foot_mirror = 0.1
             # stand_still = 0.1
 
 
@@ -265,7 +267,7 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
             #feet_air_time = 0.0
             #base_height = 0.0
             #orientation = 0.0
-            # trot_contact = 1.0
+            # trot_contact = 5.0
             # #trot_contact = 2.0
             # #foot_slide = 5
             # # foot_regular = 0.0
@@ -275,14 +277,14 @@ class Go2ConstraintVqvaeP1RoughCfg( LeggedRobotCfg ):
             # #foot_width = 0.0
             # #collision = 1.0
             # #foot_clearance = 0.0
-            # #acc_smoothness = 5
+            #acc_smoothness = 1
             # #foot_dia_enforce = 0.1
-            # foot_mirror = 1
+            foot_mirror = 1
             # stand_still = 0.0
 
  
     class cost:
-        num_costs = 3
+        num_costs = 4
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh
@@ -314,7 +316,7 @@ class Go2ConstraintVqvaeP1RoughCfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 3
+        num_costs = 4
 
         teacher_act = True
         imi_flag = True
@@ -325,7 +327,7 @@ class Go2ConstraintVqvaeP1RoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticVqvae'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 3000
+        max_iterations = 2000
         num_steps_per_env = 24
         resume = False
         resume_path = ''
