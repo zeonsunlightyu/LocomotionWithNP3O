@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.distributions import Normal
 import torch.nn.functional as F 
 from modules.common_modules import MAE, VQVAE, VQVAE_CNN, VQVAE_EMA, VQVAE_RNN, AutoEncoder, BetaVAE, CnnHistoryEncoder, MixedLayerNormMlp, MixedLipMlp, MixedMlp, RnnBarlowTwinsStateHistoryEncoder, RnnDoubleHeadEncoder, RnnEncoder, RnnStateHistoryEncoder, StateHistoryEncoder, VQVAE_Trans, VQVAE_vel, VQVAE_vel_conv, get_activation, mlp_batchnorm_factory, mlp_factory, mlp_layernorm_factory
+from modules.normalizer import EmpiricalNormalization
 from modules.transformer_modules import ActionCausalTransformer, StateCausalClsTransformer, StateCausalHeadlessTransformer, StateCausalTransformer
 class Config:
     def __init__(self):
@@ -358,6 +359,11 @@ class MlpBarlowTwinsActor(nn.Module):
                  num_actions,
                  activation) -> None:
         super(MlpBarlowTwinsActor,self).__init__()
+        self.num_prop = num_prop
+        self.num_hist = num_hist
+
+        self.obs_normalizer = EmpiricalNormalization(shape=num_prop)
+        
         self.mlp_encoder = nn.Sequential(*mlp_batchnorm_factory(activation=activation,
                                  input_dims=num_prop*num_hist,
                                  out_dims=None,
@@ -374,6 +380,12 @@ class MlpBarlowTwinsActor(nn.Module):
                                  input_dims=latent_dim + num_prop + 3,
                                  out_dims=num_actions,
                                  hidden_dims=actor_dims))
+
+        # self.actor = MixedMlp(input_size=num_prop,
+        #                       latent_size=latent_dim+3,
+        #                       hidden_size=128,
+        #                       num_actions=num_actions,
+        #                       num_experts=4)
         
         # self.vel_layer = nn.Sequential(*mlp_batchnorm_factory(activation=activation,
         #                          input_dims=64,
@@ -395,7 +407,13 @@ class MlpBarlowTwinsActor(nn.Module):
         
         self.bn = nn.BatchNorm1d(64,affine=False)
 
+    def normalize(self,obs,obs_hist):
+        obs = self.obs_normalizer(obs)
+        obs_hist = self.obs_normalizer(obs_hist.reshape(-1,self.num_prop)).reshape(-1,10,self.num_prop)
+        return obs,obs_hist
+
     def forward(self,obs,obs_hist):
+        obs,obs_hist = self.normalize(obs,obs_hist)
         # with torch.no_grad():
         obs_hist_full = torch.cat([
                 obs_hist[:,1:,:],
@@ -413,6 +431,7 @@ class MlpBarlowTwinsActor(nn.Module):
             # vel = latents[:,:3].detach()
         actor_input = torch.cat([vel.detach(),z.detach(),obs.detach()],dim=-1)
         mean  = self.actor(actor_input)
+        # mean = self.actor(torch.cat([vel.detach(),z.detach()],dim=-1),obs.detach())
         return mean
     
     # def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
@@ -445,6 +464,8 @@ class MlpBarlowTwinsActor(nn.Module):
     #     return loss
 
     def BarlowTwinsLoss(self,obs,obs_hist,priv,weight):
+        obs,obs_hist = self.normalize(obs,obs_hist)
+
         obs = obs.detach()
         obs_hist = obs_hist.detach()
 
@@ -2464,6 +2485,10 @@ class ActorCriticBarlowTwins(nn.Module):
         self.num_priv_latent = num_priv_latent
         self.if_scan_encode = scan_encoder_dims is not None and num_scan > 0
 
+        # n_proprio + n_scan + history_len*n_proprio + n_priv_latent
+        self.num_obs = num_prop + num_scan + num_hist * num_prop + num_priv_latent
+        self.obs_normalize = EmpiricalNormalization(self.num_obs)
+
         self.teacher_act = kwargs['teacher_act']
         if self.teacher_act:
             print("ppo with teacher actor")
@@ -2556,6 +2581,7 @@ class ActorCriticBarlowTwins(nn.Module):
         # disable args validation for speedup
         Normal.set_default_validate_args = False
 
+        
     @staticmethod
     # not used at the moment
     def init_weights(sequential, scales):
@@ -2610,6 +2636,8 @@ class ActorCriticBarlowTwins(nn.Module):
         return mean
         
     def evaluate(self, obs, **kwargs):
+        obs = self.obs_normalize(obs)
+
         obs_prop = obs[:, :self.num_prop]
         
         scan_latent = self.infer_scandots_latent(obs)
@@ -2621,6 +2649,8 @@ class ActorCriticBarlowTwins(nn.Module):
         return value
     
     def evaluate_cost(self,obs, **kwargs):
+        obs = self.obs_normalize(obs)
+
         obs_prop = obs[:, :self.num_prop]
         
         scan_latent = self.infer_scandots_latent(obs)
@@ -2649,6 +2679,10 @@ class ActorCriticBarlowTwins(nn.Module):
         obs_prop = obs[:, 3:self.num_prop]
         obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
         scan = obs[:, self.num_prop:self.num_prop + self.num_scan]
+        # contact = obs[:, self.num_prop + self.num_scan: self.num_prop + self.num_scan + 4]
+        # vel = obs_hist[:,-1,:3]
+
+        # priv = torch.cat([contact,vel],dim=-1)
         priv = obs_hist[:,-1,:3]
 
         loss = self.actor_teacher_backbone.BarlowTwinsLoss(obs_prop,obs_hist[:,:,3:],priv,5e-3)

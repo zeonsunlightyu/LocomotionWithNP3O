@@ -1909,16 +1909,18 @@ class MixedMlp(nn.Module):
         gate_hsize = 128
         self.gate = nn.Sequential(
             nn.Linear(input_size, gate_hsize),
+            nn.BatchNorm1d(gate_hsize),
             nn.ELU(),
             nn.Linear(gate_hsize, gate_hsize),
+            nn.BatchNorm1d(gate_hsize),
             nn.ELU(),
             nn.Linear(gate_hsize, num_experts),
         )
 
-        self.c_norm = nn.LayerNorm(input_size - latent_size)
+        #self.c_norm = nn.LayerNorm(input_size - latent_size)
 
     def forward(self, z, c):
-        c = self.c_norm(c)
+        #c = self.c_norm(c)
 
         coefficients = F.softmax(self.gate(torch.cat((z, c), dim=1)), dim=1)
         layer_out = c

@@ -128,8 +128,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         global_reference = False
 
         class ranges:
-            lin_vel_x = [-1.0, 1.0]  # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]  # min max [m/s]
+            lin_vel_x = [-1, 1]  # min max [m/s]
+            lin_vel_y = [-1, 1]  # min max [m/s]
             ang_vel_yaw = [-1, 1]  # min max [rad/s]
             heading = [-3.14, 3.14]
 
@@ -150,38 +150,14 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         clearance_height_target = -0.2
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
+            # foot_clearance = -1
+            # foot_mirror = -0.1
+            # foot_slide = -0.1
 
-            torques = -0.0
-            powers = -2e-5
-            termination = 0.0
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            lin_vel_z = -2.0
-            ang_vel_xy = -0.05
-            dof_vel = 0.0
-            dof_acc = -2.5e-7
-            base_height = -1.0
-            #base_height = -1.0
-            #collision = -0.01
-            collision = -0
-            feet_stumble = 0.0
-            action_rate = -0.01
-            action_smoothness=-0.01
-            stand_still = 0.0
-            foot_clearance= -0.01
-            foot_clearance_hippos = -0.0
-            orientation=-0.2
-            #orientation=-0.0
-            #powers_dist=-10e-5
-            feet_air_time = 0.0
-            #foot_width_equlity = -1
-            #foot_width_cons = -0.1
-            # hip_pos = -0.01
-            #foot_mirror = -0.01
-            # phase_contact = -0.1
-            # phase_foot_clearance = -1
-            #foot_swing_clearance = -0.01
-            #foot_regular = -0.05
+            foot_clearance = -0.5
+            foot_mirror = -0.05
+            foot_slide = -0.05
+
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -241,49 +217,34 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             pos_limit = 0.1
             torque_limit = 0.1
             dof_vel_limits = 0.1
-            #feet_air_time = 0.1
-            # trot_contact = 0.1
-            #foot_slide = 0.1
-            # foot_regular = 0.1
-            #collision = 0.1
-            # base_height = 0.1
-            #orientation = 0.1
-            #foot_swing_clearance = 0.1
-            #phase_contact = 0.1
-            #foot_width = 0.1
-            #collision = 0.1
-            #foot_clearance = 0.1
-            #acc_smoothness = 0.1
-            #foot_dia_enforce = 0.1
+            #foot_slide = 1
+            #foot_nocontact_regular = 1
+            #feet_air_time = 1
             #foot_mirror = 0.1
-            #hip_pos = 0.1
-            # stand_still = 0.1
-
+            # trot_contact=0.1
+            # stand_still=0.1
+            # #idol_contact = 0.1
+            # #idol_contact = 0.1
+            #base_height = 0.1
+            # foot_swing_clearance = 1
+            #acc_smoothness = 0.1
 
         class d_values:
             pos_limit = 0.0
             torque_limit = 0.0
             dof_vel_limits = 0.0
+            #foot_slide = 0.0
+            #foot_nocontact_regular = 0.0
             #feet_air_time = 0.0
-            #base_height = 0.0
-            #orientation = 0.0
-            # trot_contact = 1.0
-            #trot_contact = 2.0
-            #foot_slide = 5
-            # foot_regular = 0.0
-            # base_height = 0.0
-            #foot_swing_clearance = 0.0
-            #phase_contact = 1
-            #foot_width = 0.0
-            #collision = 1.0
-            #foot_clearance = 0.0
-            #acc_smoothness = 5
-            #foot_dia_enforce = 0.1
-            #foot_mirror = 1
-            #hip_pos = 1
+            #foot_mirror = 2.0
+            # trot_contact= 5.0
             # stand_still = 0.0
+            # #idol_contact = 0.0
+            # #idol_contact = 0.0
+            #base_height = 0.0
+            # foot_swing_clearance = 0.0
+            #acc_smoothness = 2.0
 
- 
     class cost:
         num_costs = 3
     
@@ -328,7 +289,7 @@ class Go2ConstraintHimRoughCfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticBarlowTwins'
         runner_class_name = 'OnConstraintPolicyRunner'
         algorithm_class_name = 'NP3O'
-        max_iterations = 15000
+        max_iterations = 10000
         num_steps_per_env = 24
         resume = False
         resume_path = ''
