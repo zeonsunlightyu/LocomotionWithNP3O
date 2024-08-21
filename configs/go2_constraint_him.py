@@ -95,8 +95,8 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 30.}  # [N*m/rad]
-        damping = {'joint': 0.75}     # [N*m*s/rad]
+        stiffness = {'joint': 40.}  # [N*m/rad]
+        damping = {'joint': 1.0}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
@@ -105,8 +105,22 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
 
         use_filter = True
 
+    class commands( LeggedRobotCfg.control ):
+        curriculum = True
+        max_curriculum = 1.0
+        num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        resampling_time = 10.  # time before command are changed[s]
+        heading_command = True  # if true: compute ang vel command from heading error
+        global_reference = False
+
+        class ranges:
+            lin_vel_x = [-0.5, 0.5]  # min max [m/s]
+            lin_vel_y = [-0.5, 0.5]  # min max [m/s]
+            ang_vel_yaw = [-1, 1]  # min max [rad/s]
+            heading = [-3.14, 3.14]
+
     # class commands( LeggedRobotCfg.control ):
-    #     curriculum = True
+    #     curriculum = False
     #     max_curriculum = 1.
     #     num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
     #     resampling_time = 10.  # time before command are changed[s]
@@ -114,24 +128,10 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
     #     global_reference = False
 
     #     class ranges:
-    #         lin_vel_x = [-0.5, 0.5]  # min max [m/s]
-    #         lin_vel_y = [-0.5, 0.5]  # min max [m/s]
+    #         lin_vel_x = [-1, 1]  # min max [m/s]
+    #         lin_vel_y = [-1, 1]  # min max [m/s]
     #         ang_vel_yaw = [-1, 1]  # min max [rad/s]
     #         heading = [-3.14, 3.14]
-
-    class commands( LeggedRobotCfg.control ):
-        curriculum = False
-        max_curriculum = 1.
-        num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
-        resampling_time = 10.  # time before command are changed[s]
-        heading_command = True  # if true: compute ang vel command from heading error
-        global_reference = False
-
-        class ranges:
-            lin_vel_x = [-1, 1]  # min max [m/s]
-            lin_vel_y = [-1, 1]  # min max [m/s]
-            ang_vel_yaw = [-1, 1]  # min max [rad/s]
-            heading = [-3.14, 3.14]
 
     class asset( LeggedRobotCfg.asset ):
         file = '{ROOT_DIR}/resources/go2/urdf/go2.urdf'
@@ -146,8 +146,12 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9 
         # soft_dof_vel_limit = 0.9
         # soft_torque_limit = 0.9
-        base_height_target = 0.30
-        clearance_height_target = -0.2
+        # base_height_target = 0.34
+        # clearance_height_target = -0.24
+
+        base_height_target = 0.32
+        clearance_height_target = -0.22
+
         only_positive_rewards = True
         class scales( LeggedRobotCfg.rewards.scales ):
             # foot_clearance = -1
@@ -157,20 +161,22 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             foot_clearance = -0.5
             foot_mirror = -0.05
             foot_slide = -0.05
-
+            collision = -1
+            base_height = -10.0
+            stumble = -0.05
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
         #friction_range = [0.2, 2.75]
         friction_range = [0.2, 1.25]
-        randomize_restitution = True
+        randomize_restitution = False
         restitution_range = [0.0,1.0]
         randomize_base_mass = True
         #added_mass_range = [-1., 3.]
         added_mass_range = [-1, 2.]
         randomize_base_com = True
-        added_com_range = [-0.1, 0.1]
+        added_com_range = [-0.05, 0.05]
         push_robots = True
         push_interval_s = 15
         max_push_vel_xy = 1
@@ -188,6 +194,9 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         disturbance = True
         disturbance_range = [-30.0, 30.0]
         disturbance_interval = 8
+
+        # randomize_initial_joint_pos = True
+        # initial_joint_pos_range = [0.5, 1.5]
     
     class depth( LeggedRobotCfg.depth):
         use_camera = False
