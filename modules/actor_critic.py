@@ -2703,6 +2703,23 @@ class ActorCriticBarlowTwins(nn.Module):
         hist_demo_input = torch.randn(1,self.num_hist,self.num_prop-3).half().to(device)
         model_jit = torch.jit.trace(self.actor_teacher_backbone,(obs_demo_input,hist_demo_input))
         model_jit.save(path)
+    
+    def save_torch_onnx_policy(self,path):
+        self.actor_teacher_backbone.eval()
+
+        obs_demo_input = torch.randn(1,self.num_prop-3)
+        hist_demo_input = torch.randn(1,self.num_hist,self.num_prop-3)
+        # onnx_program = torch.onnx.dynamo_export(self.actor_teacher_backbone, (obs_demo_input,hist_demo_input))
+        # onnx_program.save(path)
+        torch.onnx.export(
+        self.actor_teacher_backbone,
+        (obs_demo_input,hist_demo_input),
+        path,
+        verbose=False,
+        input_names=['obs','hist'],
+        output_names=['act'],
+    )
+
 
 class ActorCriticMixedBarlowTwins(nn.Module):
     is_recurrent = False

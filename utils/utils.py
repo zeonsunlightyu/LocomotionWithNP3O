@@ -155,4 +155,14 @@ def quaternion_slerp(q0, q1, fraction, spin=0, shortestpath=True):
     out[final_mask] = q0[final_mask]
     return out
 
+def random_quat(U):
+    u1 = U[:,0].unsqueeze(1)
+    u2 = U[:,1].unsqueeze(1)
+    u3 = U[:,2].unsqueeze(1)
+    q1 = torch.sqrt(1-u1)*torch.sin(2*torch.pi*u2)
+    q2 = torch.sqrt(1-u1)*torch.cos(2*torch.pi*u2)
+    q3 = torch.sqrt(u1)*torch.sin(2*torch.pi*u3)
+    q4 = torch.sqrt(u1)*torch.cos(2*torch.pi*u3)
+    Q = torch.cat([q1,q2,q3,q4],dim=-1)
+    return Q
 

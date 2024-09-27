@@ -107,7 +107,10 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
 
     class commands( LeggedRobotCfg.control ):
         curriculum = True
-        max_curriculum = 1.0
+        max_forward_curriculum = 1.5
+        max_backward_curriculum = 1.0
+        max_lat_curriculum = 1.0
+
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10.  # time before command are changed[s]
         heading_command = True  # if true: compute ang vel command from heading error
@@ -138,7 +141,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
         foot_name = "foot"
         name = "go2"
         penalize_contacts_on = ["thigh", "calf"]
-        terminate_after_contacts_on = ["base"]
+        terminate_after_contacts_on = []#["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = True
   
@@ -158,12 +161,24 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             # foot_mirror = -0.1
             # foot_slide = -0.1
 
-            foot_clearance = -0.5
-            foot_mirror = -0.05
-            foot_slide = -0.05
-            collision = -1
-            base_height = -10.0
-            stumble = -0.05
+            foot_clearance_up = -0.5
+            foot_mirror_up = -0.05
+            foot_slide_up = -0.05
+            collision_up = -1
+            base_height_up = -10.0
+            stumble_up = -0.05
+            upward = 0.5
+            has_contact = 0.5
+            tracking_lin_vel = 2.0
+            tracking_ang_vel = 1.0
+            stand_nice = -0.1
+            #lin_vel_z_up = -4.0
+            lin_vel_z_up = -4.0
+            #ang_vel_xy_up = -0.05
+            ang_vel_xy_up = -0.1
+            orientation_up=-0.2
+            feet_contact_forces = -0.00015
+            # feet_contact_forces = -0.0002
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
@@ -226,6 +241,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             pos_limit = 0.1
             torque_limit = 0.1
             dof_vel_limits = 0.1
+            # feet_contact_forces = 0.1
             #foot_slide = 1
             #foot_nocontact_regular = 1
             #feet_air_time = 1
@@ -242,6 +258,7 @@ class Go2ConstraintHimRoughCfg( LeggedRobotCfg ):
             pos_limit = 0.0
             torque_limit = 0.0
             dof_vel_limits = 0.0
+            # feet_contact_forces = 0.0
             #foot_slide = 0.0
             #foot_nocontact_regular = 0.0
             #feet_air_time = 0.0
